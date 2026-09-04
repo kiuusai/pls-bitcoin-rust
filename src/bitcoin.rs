@@ -135,6 +135,10 @@ impl Multisig {
         return self.script_tree;
     }
 
+    pub fn get_internal_key(self) -> XOnlyPublicKey {
+        return self.internal_key;
+    }
+
     pub fn start_tx_spending(
         self,
         redeem_script: ScriptBuf,
