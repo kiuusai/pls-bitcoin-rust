@@ -132,19 +132,19 @@ impl Multisig {
         };
     }
 
-    pub fn get_address(&self) -> Address {
+    pub fn address(&self) -> Address {
         return self.address.clone();
     }
 
-    pub fn get_multisig_scripts(&self) -> Vec<MultisigScript> {
+    pub fn multisig_scripts(&self) -> Vec<MultisigScript> {
         return self.multisig_scripts.clone();
     }
 
-    pub fn get_script_tree(&self) -> TapTree {
+    pub fn script_tree(&self) -> TapTree {
         return self.script_tree.clone();
     }
 
-    pub fn get_internal_key(&self) -> XOnlyPublicKey {
+    pub fn internal_key(&self) -> XOnlyPublicKey {
         return self.internal_key;
     }
 
