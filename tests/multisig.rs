@@ -1,8 +1,10 @@
-use std::{assert_eq, println};
+use std::{assert_eq, println, vec};
 
+use bitcoin::script::Builder;
 use pls_bitcoin_lib::multisig::{Multisig, MultisigOptions};
+use pls_bitcoin_lib::utils;
 
-use bitcoin::KnownHrp;
+use bitcoin::{KnownHrp, ScriptBuf, XOnlyPublicKey, opcodes};
 use bitcoin::key::Keypair;
 use bitcoin::secp256k1::{Secp256k1, SecretKey};
 
@@ -12,7 +14,7 @@ fn it_verifies_multisig_creation() {
 
     let mut parts_keypairs: Vec<Keypair> = Vec::new();
 
-    for x in 0..1 {
+    for x in 0..2 {
         let mut secret_slice = [0x0; 32];
         secret_slice.fill(x);
 
@@ -32,15 +34,72 @@ fn it_verifies_multisig_creation() {
     let secret_key = SecretKey::from_slice(&secret_slice).unwrap();
     let internal_pubkey = Keypair::from_secret_key(&secp, &secret_key).public_key();
 
+    let network = KnownHrp::Regtest;
+    let quorum = 1;
+
     let multisig = Multisig::new(MultisigOptions {
         parts: parts_keypairs.iter().map(|part| part.public_key()).collect(),
-        quorum: 1,
+        quorum,
         arbitrators: arbitrators.iter().map(|arbitrator| arbitrator.public_key()).collect(),
         internal_pubkey,
-        network: KnownHrp::Mainnet,
+        network,
     });
 
-    assert_eq!(internal_pubkey.x_only_public_key().0, multisig.get_internal_key());
+    assert_eq!(internal_pubkey.x_only_public_key().0, multisig.internal_key());
 
-    println!("Bitcoin address: {}", multisig.get_address().to_string());
+    let mut combinations: Vec<Vec<Keypair>> = vec![parts_keypairs.clone()];
+
+    parts_keypairs.into_iter().for_each(|part| {
+        let mut arbitrators_combinations = utils::combine(&arbitrators, quorum);
+
+        arbitrators_combinations.iter_mut().for_each(|combination| {
+            let mut new_combination = vec![part];
+            new_combination.append(combination);
+
+            combinations.push(new_combination);
+        });
+    });
+
+    let mut scripts: Vec<ScriptBuf> = Vec::new();
+
+    combinations.iter().for_each(|combination| {
+            let mut builder = Builder::new();
+
+            let mut first_combination = true;
+
+            for key in combination.iter() {
+                let xonly_key = XOnlyPublicKey::from_keypair(key).0;
+
+                builder = builder.push_x_only_key(&xonly_key);
+
+                builder = builder.push_opcode(if first_combination {
+                    opcodes::all::OP_CHECKSIG
+                } else {
+                    opcodes::all::OP_CHECKSIGADD
+                });
+
+                first_combination = false;
+            }
+
+            builder = builder.push_int(combination.len() as i64);
+
+            builder = builder.push_opcode(opcodes::all::OP_NUMEQUAL);
+
+            let script = builder.into_script();
+
+            scripts.push(script);
+    });
+
+    let multisig_scripts = multisig.scripts();
+
+    assert_eq!(scripts.len(), multisig_scripts.len());
+
+    multisig_scripts.iter().enumerate().for_each(|(i, multisig_script)| {
+        let script = scripts[i].clone();
+
+        assert_eq!(script.to_asm_string(), multisig_script.leaf.to_asm_string());
+        assert_eq!(multisig_scripts.len() - i, multisig_script.weight);
+    });
+
+    println!("Bitcoin address: {}", multisig.address().to_string());
 }
