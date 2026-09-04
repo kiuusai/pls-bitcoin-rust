@@ -7,8 +7,8 @@ use bitcoin::script::Builder;
 use bitcoin::secp256k1::{PublicKey, XOnlyPublicKey};
 use bitcoin::taproot::{LeafVersion, NodeInfo, TapTree, TaprootBuilder, TaprootSpendInfo};
 use bitcoin::{
-    opcodes, transaction, Address, Amount, KnownHrp, OutPoint, Psbt, ScriptBuf, Sequence,
-    Transaction, TxIn, TxOut, Witness,
+    opcodes, transaction, Address, Amount, KnownHrp, OutPoint, Psbt, ScriptBuf,
+    Sequence, Transaction, TxIn, TxOut, Witness,
 };
 
 pub struct Utxo {
@@ -22,6 +22,14 @@ pub struct MultisigScript {
     pub combination: Vec<PublicKey>,
 }
 
+pub struct MultisigOptions {
+    pub parts: Vec<PublicKey>,
+    pub arbitrators: Vec<PublicKey>,
+    pub quorum: usize,
+    pub internal_pubkey: PublicKey,
+    pub network: KnownHrp,
+}
+
 pub struct Multisig {
     address: Address,
     multisig_scripts: Vec<MultisigScript>,
@@ -30,18 +38,12 @@ pub struct Multisig {
 }
 
 impl Multisig {
-    pub fn new(
-        parts: Vec<PublicKey>,
-        arbitrators: Vec<PublicKey>,
-        quorum: usize,
-        internal_pubkey: PublicKey,
-        network: KnownHrp,
-    ) -> Multisig {
+    pub fn new(opts: MultisigOptions) -> Multisig {
         // Create scripts arrays with each combination for each cases
-        let mut keys_combination: Vec<Vec<PublicKey>> = vec![parts.clone()];
+        let mut keys_combination: Vec<Vec<PublicKey>> = vec![opts.parts.clone()];
 
-        parts.into_iter().for_each(|part| {
-            let mut arbitrators_combinations = combine(&arbitrators, quorum);
+        opts.parts.into_iter().for_each(|part| {
+            let mut arbitrators_combinations = combine(&opts.arbitrators, opts.quorum);
 
             arbitrators_combinations.iter_mut().for_each(|combination| {
                 let mut new_combination = vec![part];
@@ -52,7 +54,7 @@ impl Multisig {
         });
 
         // Mount scripts options for multisig
-        let (xonly_internal_pubkey, _) = internal_pubkey.x_only_public_key();
+        let (xonly_internal_pubkey, _) = opts.internal_pubkey.x_only_public_key();
 
         let mut scripts: Vec<ScriptBuf> = Vec::new();
 
@@ -112,7 +114,7 @@ impl Multisig {
             &bitcoin::secp256k1::Secp256k1::new(),
             xonly_internal_pubkey,
             Some(script_tree.root_hash()),
-            network,
+            opts.network,
         );
 
         return Multisig {
