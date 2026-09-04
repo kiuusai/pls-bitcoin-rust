@@ -25,6 +25,7 @@ pub struct MultisigScript {
     pub combination: Vec<PublicKey>,
 }
 
+#[derive(Clone)]
 pub struct MultisigOptions {
     pub parts: Vec<PublicKey>,
     pub arbitrators: Vec<PublicKey>,
