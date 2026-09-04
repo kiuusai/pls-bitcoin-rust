@@ -2,20 +2,31 @@ use std::vec;
 
 use crate::utils::*;
 
+use bitcoin::absolute::LockTime;
 use bitcoin::script::Builder;
-use bitcoin::secp256k1::PublicKey;
-use bitcoin::taproot::{TapTree, TaprootBuilder};
-use bitcoin::{opcodes, Address, KnownHrp, ScriptBuf, TapLeafHash};
+use bitcoin::secp256k1::{PublicKey, XOnlyPublicKey};
+use bitcoin::taproot::{LeafVersion, NodeInfo, TapTree, TaprootBuilder, TaprootSpendInfo};
+use bitcoin::{
+    opcodes, transaction, Address, Amount, KnownHrp, OutPoint, Psbt, ScriptBuf, Sequence,
+    Transaction, TxIn, TxOut, Witness,
+};
+
+pub struct Utxo {
+    pub outpoint: OutPoint,
+    pub value: Amount,
+}
 
 pub struct MultisigScript {
     pub weight: usize,
-    pub leaf: TapLeafHash,
+    pub leaf: ScriptBuf,
     pub combination: Vec<PublicKey>,
 }
 
 pub struct Multisig {
     address: Address,
     multisig_scripts: Vec<MultisigScript>,
+    internal_key: XOnlyPublicKey,
+    script_tree: TapTree,
 }
 
 impl Multisig {
@@ -29,22 +40,23 @@ impl Multisig {
         // Create scripts arrays with each combination for each cases
         let mut keys_combination: Vec<Vec<PublicKey>> = vec![parts.clone()];
 
-        for part in parts.clone().into_iter() {
+        parts.into_iter().for_each(|part| {
             let mut arbitrators_combinations = combine(&arbitrators, quorum);
 
-            for combination in arbitrators_combinations.iter_mut() {
+            arbitrators_combinations.iter_mut().for_each(|combination| {
                 let mut new_combination = vec![part];
                 new_combination.append(combination);
 
                 keys_combination.push(new_combination);
-            }
-        }
+            });
+        });
 
         // Mount scripts options for multisig
+        let (xonly_internal_pubkey, _) = internal_pubkey.x_only_public_key();
 
         let mut scripts: Vec<ScriptBuf> = Vec::new();
 
-        for combination in keys_combination.iter() {
+        keys_combination.iter().for_each(|combination| {
             let mut builder = Builder::new();
 
             let mut combination_iter = combination.iter();
@@ -67,10 +79,12 @@ impl Multisig {
                 first_combination = false;
             }
 
-            let script = builder.into_script();
+            let mut script = builder.into_script();
+
+            script = script.to_p2tr(&bitcoin::secp256k1::Secp256k1::new(), xonly_internal_pubkey);
 
             scripts.push(script);
-        }
+        });
 
         // Mount taptree
         let multisig_scripts = scripts
@@ -78,9 +92,10 @@ impl Multisig {
             .enumerate()
             .map(|(i, script)| MultisigScript {
                 weight: i,
-                leaf: script.tapscript_leaf_hash(),
+                leaf: script.clone(),
                 combination: keys_combination.get(i).unwrap().clone(),
-            }).collect();
+            })
+            .collect();
 
         let builder = TaprootBuilder::with_huffman_tree(
             scripts
@@ -90,20 +105,21 @@ impl Multisig {
         )
         .unwrap();
 
-        let taptree = TapTree::try_from(builder).unwrap();
+        let script_tree = TapTree::try_from(builder).unwrap();
 
         // Create multisig address for this one
-        let (xonly_internal_pubkey, _) = internal_pubkey.x_only_public_key();
         let address = Address::p2tr(
             &bitcoin::secp256k1::Secp256k1::new(),
             xonly_internal_pubkey,
-            Some(taptree.root_hash()),
+            Some(script_tree.root_hash()),
             network,
         );
 
         return Multisig {
             address,
             multisig_scripts,
+            script_tree,
+            internal_key: xonly_internal_pubkey,
         };
     }
 
@@ -115,5 +131,58 @@ impl Multisig {
         return self.multisig_scripts;
     }
 
-    pub fn start_tx_spending(self) {}
+    pub fn get_script_tree(self) -> TapTree {
+        return self.script_tree;
+    }
+
+    pub fn start_tx_spending(
+        self,
+        redeem_script: ScriptBuf,
+        utxos: Vec<Utxo>,
+        outs: Vec<TxOut>,
+    ) -> Psbt {
+        let unsigned_tx = Transaction {
+            version: transaction::Version::TWO,
+            input: utxos
+                .iter()
+                .map(|utxo| TxIn {
+                    previous_output: utxo.outpoint.clone(),
+                    script_sig: ScriptBuf::new(),
+                    sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+                    witness: Witness::new(),
+                })
+                .collect(),
+            output: outs,
+            lock_time: LockTime::ZERO,
+        };
+
+        let mut psbt = Psbt::from_unsigned_tx(unsigned_tx).unwrap();
+
+        let node_info = NodeInfo::from(self.script_tree.clone());
+
+        let spend_info = TaprootSpendInfo::from_node_info(
+            &bitcoin::secp256k1::Secp256k1::new(),
+            self.internal_key,
+            node_info,
+        );
+
+        let control_block = spend_info
+            .control_block(&(redeem_script.clone(), LeafVersion::TapScript))
+            .unwrap();
+
+        utxos.iter().enumerate().for_each(|(i, utxo)| {
+            let input = &mut psbt.inputs[i];
+
+            input.witness_utxo = Some(TxOut {
+                value: utxo.value,
+                script_pubkey: self.address.script_pubkey(),
+            });
+            input.tap_scripts.insert(
+                control_block.clone(),
+                (redeem_script.clone(), LeafVersion::TapScript),
+            );
+        });
+
+        return psbt;
+    }
 }
