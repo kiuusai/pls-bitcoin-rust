@@ -5,4 +5,3 @@ edition = "2021"
 
 [dependencies]
 bitcoin = "0.32.102"
-secp256k1 = "0.33.1"
