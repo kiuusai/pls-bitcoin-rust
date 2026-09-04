@@ -73,7 +73,9 @@ impl Multisig {
             let mut first_combination = true;
 
             for key in combination.iter() {
-                builder = builder.push_key(&bitcoin::PublicKey::new(*key));
+                let xonly_key = key.x_only_public_key().0;
+
+                builder = builder.push_x_only_key(&xonly_key);
 
                 builder = builder.push_opcode(if first_combination {
                     opcodes::all::OP_CHECKSIG
