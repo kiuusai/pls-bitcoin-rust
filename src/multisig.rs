@@ -5,7 +5,7 @@ use crate::utils::*;
 use bitcoin::absolute::LockTime;
 use bitcoin::script::Builder;
 use bitcoin::secp256k1;
-use bitcoin::secp256k1::{Secp256k1, PublicKey, XOnlyPublicKey};
+use bitcoin::secp256k1::{PublicKey, Secp256k1, XOnlyPublicKey};
 use bitcoin::taproot::{LeafVersion, NodeInfo, TapTree, TaprootBuilder, TaprootSpendInfo};
 use bitcoin::{
     opcodes, transaction, Address, Amount, KnownHrp, OutPoint, Psbt, ScriptBuf, Sequence,
@@ -70,29 +70,25 @@ impl Multisig {
         keys_combination.iter().for_each(|combination| {
             let mut builder = Builder::new();
 
-            let mut combination_iter = combination.iter();
-
-            let first_key = combination_iter.next().unwrap();
-
-            builder = builder.push_key(&bitcoin::PublicKey::new(*first_key));
-
             let mut first_combination = true;
 
-            for key in combination_iter {
+            for key in combination.iter() {
+                builder = builder.push_key(&bitcoin::PublicKey::new(*key));
+
                 builder = builder.push_opcode(if first_combination {
                     opcodes::all::OP_CHECKSIG
                 } else {
                     opcodes::all::OP_CHECKSIGADD
                 });
 
-                builder = builder.push_key(&bitcoin::PublicKey::new(*key));
-
                 first_combination = false;
             }
 
-            let mut script = builder.into_script();
+            builder = builder.push_int(combination.len() as i64);
 
-            script = script.to_p2tr(&secp, xonly_internal_pubkey);
+            builder = builder.push_opcode(opcodes::all::OP_NUMEQUAL);
+
+            let script = builder.into_script();
 
             scripts.push(script);
         });
@@ -177,11 +173,7 @@ impl Multisig {
 
         let node_info = NodeInfo::from(self.script_tree.clone());
 
-        let spend_info = TaprootSpendInfo::from_node_info(
-            &self.secp,
-            self.internal_key,
-            node_info,
-        );
+        let spend_info = TaprootSpendInfo::from_node_info(&self.secp, self.internal_key, node_info);
 
         let control_block = spend_info
             .control_block(&(redeem_script.clone(), LeafVersion::TapScript))
