@@ -117,7 +117,7 @@ impl Multisig {
 
         // Create multisig address for this one
         let address = Address::p2tr(
-            &bitcoin::secp256k1::Secp256k1::new(),
+            &secp,
             xonly_internal_pubkey,
             Some(script_tree.root_hash()),
             opts.network,
@@ -137,7 +137,7 @@ impl Multisig {
         return self.address.clone();
     }
 
-    pub fn multisig_scripts(&self) -> Vec<MultisigScript> {
+    pub fn scripts(&self) -> Vec<MultisigScript> {
         return self.multisig_scripts.clone();
     }
 
