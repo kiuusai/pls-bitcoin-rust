@@ -1,6 +1,7 @@
 use std::{assert_eq, println, vec};
 
 use bitcoin::script::Builder;
+use bitcoin::taproot::{TapTree, TaprootBuilder};
 use pls_bitcoin_lib::multisig::{Multisig, MultisigOptions};
 use pls_bitcoin_lib::utils;
 
@@ -100,6 +101,16 @@ fn it_verifies_multisig_creation() {
         assert_eq!(script.to_asm_string(), multisig_script.leaf.to_asm_string());
         assert_eq!(multisig_scripts.len() - i, multisig_script.weight);
     });
+
+    let multisig_taptree = multisig.script_tree();
+
+    let script_tree = TapTree::try_from(
+        TaprootBuilder::with_huffman_tree(
+            scripts.iter().enumerate().map(|(i, script)| ((scripts.len() - i) as u32, script.clone()))
+        ).unwrap()
+    ).unwrap();
+
+    assert_eq!(script_tree, multisig_taptree);
 
     println!("Bitcoin address: {}", multisig.address().to_string());
 }
