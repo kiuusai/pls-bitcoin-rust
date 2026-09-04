@@ -1,4 +1,4 @@
-pub mod bitcoin;
+pub mod multisig;
 
 mod utils;
 
