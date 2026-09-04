@@ -96,21 +96,20 @@ impl Multisig {
         });
 
         // Mount taptree
-        let multisig_scripts = scripts
+        let multisig_scripts: Vec<MultisigScript> = scripts
             .iter()
             .enumerate()
             .map(|(i, script)| MultisigScript {
-                weight: i,
+                weight: scripts.len() - i,
                 leaf: script.clone(),
                 combination: keys_combination.get(i).unwrap().clone(),
             })
             .collect();
 
         let builder = TaprootBuilder::with_huffman_tree(
-            scripts
+            multisig_scripts
                 .iter()
-                .enumerate()
-                .map(|(i, script)| (u32::try_from(i).unwrap(), script.clone())),
+                .map(|script| (script.weight as u32, script.leaf.clone())),
         )
         .unwrap();
 
