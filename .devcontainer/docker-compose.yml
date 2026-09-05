@@ -1,0 +1,11 @@
+version: "3"
+
+services:
+  lib:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    volumes:
+      - ..:/workspaces/pls_rust_bitcoin_lib
+
+    command: sleep infinity
