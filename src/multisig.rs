@@ -102,7 +102,7 @@ impl Multisig {
             .map(|(i, script)| MultisigScript {
                 weight: scripts.len() - i,
                 leaf: script.clone(),
-                combination: keys_combination.get(i).unwrap().clone(),
+                combination: keys_combination[i].clone(),
             })
             .collect();
 
