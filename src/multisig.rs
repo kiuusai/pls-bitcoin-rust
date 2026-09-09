@@ -4,11 +4,11 @@ use crate::utils::*;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::script::Builder;
-use bitcoin::secp256k1;
+use bitcoin::{Network, secp256k1};
 use bitcoin::secp256k1::{PublicKey, Secp256k1, XOnlyPublicKey};
 use bitcoin::taproot::{LeafVersion, NodeInfo, TapTree, TaprootBuilder, TaprootSpendInfo};
 use bitcoin::{
-    opcodes, transaction, Address, Amount, KnownHrp, OutPoint, Psbt, ScriptBuf, Sequence,
+    opcodes, transaction, Address, Amount, OutPoint, Psbt, ScriptBuf, Sequence,
     Transaction, TxIn, TxOut, Witness,
 };
 
@@ -31,7 +31,7 @@ pub struct MultisigOptions {
     pub arbitrators: Vec<PublicKey>,
     pub quorum: usize,
     pub internal_pubkey: PublicKey,
-    pub network: KnownHrp,
+    pub network: Network,
 }
 
 #[derive(Clone)]

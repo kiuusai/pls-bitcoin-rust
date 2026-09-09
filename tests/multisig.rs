@@ -1,42 +1,41 @@
 mod multisig_integration_tests {
     use std::{assert_eq, println, vec};
 
-    use bitcoin::script::Builder;
-    use bitcoin::taproot::{TapTree, TaprootBuilder};
+    use bitcoin::key::rand::thread_rng;
+    use bitcoincore_rpc::{Auth, Client, RpcApi};
     use pls_bitcoin_lib::multisig::{Multisig, MultisigOptions};
     use pls_bitcoin_lib::utils;
 
     use bitcoin::key::Keypair;
-    use bitcoin::secp256k1::{Secp256k1, SecretKey, PublicKey};
-    use bitcoin::{opcodes, Address, KnownHrp, ScriptBuf, XOnlyPublicKey};
+    use bitcoin::script::Builder;
+    use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
+    use bitcoin::taproot::{TapTree, TaprootBuilder};
+    use bitcoin::{opcodes, Address, Amount, Network, ScriptBuf, XOnlyPublicKey};
 
     #[test]
     fn it_verifies_multisig_creation() {
         let secp = Secp256k1::new();
 
+        let rng = &mut thread_rng();
+
         let mut parts_keypairs: Vec<Keypair> = Vec::new();
 
-        for x in 0..2 {
-            let mut secret_slice = [0x0; 32];
-            secret_slice.fill(x);
-
-            let secret_key = SecretKey::from_slice(&[0x01; 32]).unwrap();
+        for _ in 0..2 {
+            let secret_key = SecretKey::new(rng);
             let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
             parts_keypairs.push(keypair);
         }
 
-        let secret_slice = [0x2; 32];
-        let secret_key = SecretKey::from_slice(&secret_slice).unwrap();
+        let secret_key = SecretKey::new(rng);
         let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
         let arbitrators: Vec<Keypair> = vec![keypair];
 
-        let secret_slice = [0x3; 32];
-        let secret_key = SecretKey::from_slice(&secret_slice).unwrap();
+        let secret_key = SecretKey::new(rng);
         let internal_pubkey = Keypair::from_secret_key(&secp, &secret_key).public_key();
 
-        let network = KnownHrp::Regtest;
+        let network = Network::Regtest;
         let quorum = 1;
 
         let multisig = Multisig::new(MultisigOptions {
