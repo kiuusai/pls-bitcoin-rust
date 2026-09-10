@@ -95,35 +95,15 @@ impl Multisig {
             scripts.push(script);
         });
 
-        let largest_len = keys_combination
-            .iter()
-            .map(|combination| combination.len())
-            .max()
-            .unwrap_or(0);
-
-        let smallest_len = keys_combination
-            .iter()
-            .map(|combination| combination.len())
-            .min()
-            .unwrap_or(0);
-
         // Mount taptree
         let multisig_scripts: Vec<MultisigScript> = scripts
             .iter()
             .enumerate()
             .map(|(i, script)| MultisigScript {
-                // Prioritize shortest scripts (parts agreements commonly)
-                weight: ({
-                    let combination_len = keys_combination[i].len();
-
-                    // Forces first if it's the parts combination and it's smallest length
-                    if i == 0 && combination_len == smallest_len {
-                        usize::MAX
-                    // Otherwise follows the default rule
-                    } else {
-                        largest_len - combination_len
-                    }
-                }),
+                // Prioritize parts agreements
+                /* TODO: Fix logic to trully prioritize shortest paths instead only parts
+                agreements (Breaking change) */
+                weight: (if i == 0 { 5 } else { 1 }),
                 leaf: script.clone(),
                 combination: keys_combination[i].clone(),
             })
