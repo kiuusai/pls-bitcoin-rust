@@ -2,6 +2,8 @@
 name = "pls-bitcoin-lib"
 version = "0.1.0"
 edition = "2021"
+description = "A Bitcoin contracts constructor lib for Private Law Society project"
+license = "MIT"
 
 [dependencies]
 bitcoin = "0.32.102"
