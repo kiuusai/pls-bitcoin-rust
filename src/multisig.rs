@@ -12,20 +12,20 @@ use bitcoin::{
     Transaction, TxIn, TxOut, Witness,
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Utxo {
     pub outpoint: OutPoint,
     pub value: Amount,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MultisigScript {
     pub weight: usize,
     pub leaf: ScriptBuf,
     pub combination: Vec<PublicKey>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MultisigOptions {
     pub parts: Vec<PublicKey>,
     pub arbitrators: Vec<PublicKey>,
@@ -34,7 +34,7 @@ pub struct MultisigOptions {
     pub network: Network,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Multisig {
     address: Address,
     multisig_scripts: Vec<MultisigScript>,
