@@ -4,13 +4,13 @@ use crate::utils::*;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::script::Builder;
-use bitcoin::{Network, secp256k1};
 use bitcoin::secp256k1::{PublicKey, Secp256k1, XOnlyPublicKey};
 use bitcoin::taproot::{LeafVersion, NodeInfo, TapTree, TaprootBuilder, TaprootSpendInfo};
 use bitcoin::{
-    opcodes, transaction, Address, Amount, OutPoint, Psbt, ScriptBuf, Sequence,
-    Transaction, TxIn, TxOut, Witness,
+    opcodes, transaction, Address, Amount, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn,
+    TxOut, Witness,
 };
+use bitcoin::{secp256k1, Network};
 
 #[derive(Debug, Clone)]
 pub struct Utxo {
@@ -95,12 +95,35 @@ impl Multisig {
             scripts.push(script);
         });
 
+        let largest_len = keys_combination
+            .iter()
+            .map(|combination| combination.len())
+            .max()
+            .unwrap_or(0);
+
+        let smallest_len = keys_combination
+            .iter()
+            .map(|combination| combination.len())
+            .min()
+            .unwrap_or(0);
+
         // Mount taptree
         let multisig_scripts: Vec<MultisigScript> = scripts
             .iter()
             .enumerate()
             .map(|(i, script)| MultisigScript {
-                weight: scripts.len() - i,
+                // Prioritize shortest scripts (parts agreements commonly)
+                weight: ({
+                    let combination_len = keys_combination[i].len();
+
+                    // Forces first if it's the parts combination and it's smallest length
+                    if i == 0 && combination_len == smallest_len {
+                        usize::MAX
+                    // Otherwise follows the default rule
+                    } else {
+                        largest_len - combination_len
+                    }
+                }),
                 leaf: script.clone(),
                 combination: keys_combination[i].clone(),
             })

@@ -92,7 +92,7 @@ mod multisig_integration_tests {
 
         let mut combinations: Vec<Vec<Keypair>> = vec![parts_keypairs.clone()];
 
-        parts_keypairs.into_iter().for_each(|part| {
+        parts_keypairs.clone().into_iter().for_each(|part| {
             let mut arbitrators_combinations = utils::combine(&arbitrators, quorum);
 
             arbitrators_combinations.iter_mut().for_each(|combination| {
@@ -143,8 +143,38 @@ mod multisig_integration_tests {
             .for_each(|(i, multisig_script)| {
                 let script = scripts[i].clone();
 
+                let largest_len = combinations
+                    .iter()
+                    .map(|combination| combination.len())
+                    .max()
+                    .unwrap_or(0);
+
+                let smallest_len = combinations
+                    .iter()
+                    .map(|combination| combination.len())
+                    .min()
+                    .unwrap_or(0);
+
+                let combination_len = multisig_script.combination.len();
+
+                let multisig_combination_is_parts = multisig_script.combination.iter().all(|key| {
+                    let pubkeys = parts_keypairs
+                        .clone()
+                        .iter()
+                        .map(|keypair| keypair.public_key())
+                        .collect::<Vec<PublicKey>>();
+                    pubkeys.contains(key)
+                });
+
                 assert_eq!(script.to_asm_string(), multisig_script.leaf.to_asm_string());
-                assert_eq!(multisig_scripts.len() - i, multisig_script.weight);
+                assert_eq!(
+                    if multisig_combination_is_parts && combination_len == smallest_len {
+                        usize::MAX
+                    } else {
+                        largest_len - multisig_script.combination.len()
+                    },
+                    multisig_script.weight
+                );
 
                 let combination: Vec<PublicKey> = combinations[i]
                     .clone()
