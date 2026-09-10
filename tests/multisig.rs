@@ -397,5 +397,22 @@ mod multisig_integration_tests {
         let tx = psbt.extract_tx().unwrap();
 
         client.send_raw_transaction(&tx).unwrap();
+
+        let output = tx
+            .output
+            .iter()
+            .find(|output| {
+                let address = Address::from_script(&output.script_pubkey, network).unwrap();
+
+                address == redeemer_address
+            })
+            .unwrap();
+
+        println!(
+            "sent {} btc from {} multisig address to {}",
+            output.value,
+            multisig.address(),
+            redeemer_address
+        )
     }
 }
