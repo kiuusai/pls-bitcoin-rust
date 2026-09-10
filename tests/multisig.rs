@@ -262,15 +262,11 @@ mod multisig_integration_tests {
             })
             .unwrap();
 
-        println!(
-            "sent {} btc to {} address",
-            output.value,
-            multisig.address()
-        );
-
         let output_address = Address::from_script(&output.script_pubkey, network).unwrap();
 
         assert_eq!(output_address, multisig.address());
+
+        println!("sent {} btc to {} address", output.value, output_address,);
 
         let redeem_script = multisig
             .scripts()
@@ -308,7 +304,8 @@ mod multisig_integration_tests {
             script_pubkey: redeemer_address.script_pubkey(),
         }];
 
-        let mut psbt = multisig.start_tx_spending(redeem_script.leaf.clone(), utxos.clone(), outs.clone());
+        let mut psbt =
+            multisig.start_tx_spending(redeem_script.leaf.clone(), utxos.clone(), outs.clone());
 
         let unsigned_tx = psbt.unsigned_tx.clone();
         let mut sighash_cache = SighashCache::new(unsigned_tx);
@@ -321,7 +318,10 @@ mod multisig_integration_tests {
         let prevouts: Vec<TxOut> = utxos
             .clone()
             .iter()
-            .map(|utxo| TxOut { value: utxo.value, script_pubkey: multisig.address().script_pubkey() })
+            .map(|utxo| TxOut {
+                value: utxo.value,
+                script_pubkey: multisig.address().script_pubkey(),
+            })
             .collect();
 
         for i in 0..psbt.inputs.len() {
