@@ -1,3 +1,5 @@
+#[suitest::suite(multisig_integration_tests)]
+#[suitest::suite_cfg(sequential = false)]
 mod multisig_integration_tests {
     use std::{assert_eq, env, println, vec};
 
@@ -17,6 +19,7 @@ mod multisig_integration_tests {
     use bitcoincore_rpc::json::EstimateMode;
     use bitcoincore_rpc::{Auth, Client, RpcApi};
     use dotenv::dotenv;
+    use suitest::before_all;
 
     #[derive(Debug, Clone)]
     struct TestConfig {
@@ -25,20 +28,25 @@ mod multisig_integration_tests {
         pass: String,
     }
 
-    fn config() -> TestConfig {
+    #[before_all]
+    fn config() -> (TestConfig,) {
         // It loads the dotenv and ignore errors if file doesn't exists
         let _ = dotenv();
 
-        return TestConfig {
+        let node_url = env::var("RPC_NODE_URL").unwrap_or(String::from("http://0.0.0.0:18443"));
+        let user = env::var("RPC_USER").unwrap_or(String::from("admin1"));
+        let pass = env::var("RPC_PASSWORD").unwrap_or(String::from("123"));
+
+        (TestConfig {
             // Use nigiri to make it works instantly
-            node_url: env::var("RPC_NODE_URL").unwrap_or(String::from("http://0.0.0.0:18443")),
-            user: env::var("RPC_USER").unwrap_or(String::from("admin1")),
-            pass: env::var("RPC_PASSWORD").unwrap_or(String::from("123")),
-        };
+            node_url,
+            user,
+            pass,
+        },)
     }
 
     #[test]
-    fn it_verifies_multisig_creation() {
+    fn it_verifies_multisig_creation(_config: TestConfig) {
         let secp = Secp256k1::new();
 
         let rng = &mut thread_rng();
@@ -173,14 +181,15 @@ mod multisig_integration_tests {
     }
 
     #[test]
-    fn it_spends_multisig_values() {
-        let config = config();
-
+    fn it_spends_multisig_values(config: TestConfig) {
         let secp = Secp256k1::new();
         let rng = &mut thread_rng();
 
-        let client =
-            Client::new(&config.node_url, Auth::UserPass(config.user, config.pass)).unwrap();
+        let client = Client::new(
+            &config.node_url,
+            Auth::UserPass(config.user.clone(), config.pass.clone()),
+        )
+        .unwrap();
 
         let mut parts_keypairs: Vec<Keypair> = Vec::new();
 
