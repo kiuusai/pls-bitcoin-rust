@@ -40,6 +40,8 @@ pub struct Multisig {
     multisig_scripts: Vec<MultisigScript>,
     internal_key: XOnlyPublicKey,
     script_tree: TapTree,
+    quorum: usize,
+    network: Network,
 
     secp: Secp256k1<secp256k1::All>,
 }
@@ -131,6 +133,8 @@ impl Multisig {
             multisig_scripts,
             script_tree,
             internal_key: xonly_internal_pubkey,
+            network: opts.network,
+            quorum: opts.quorum,
 
             secp,
         };
@@ -150,6 +154,14 @@ impl Multisig {
 
     pub fn internal_key(&self) -> XOnlyPublicKey {
         return self.internal_key;
+    }
+
+    pub fn network(&self) -> Network {
+        return self.network;
+    }
+
+    pub fn quorum(&self) -> usize {
+        return self.quorum;
     }
 
     pub fn start_tx_spending(

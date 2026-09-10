@@ -85,6 +85,10 @@ mod multisig_e2e_tests {
             network,
         });
 
+        assert_eq!(network, multisig.network());
+
+        assert_eq!(quorum, multisig.quorum());
+
         assert_eq!(
             internal_pubkey.x_only_public_key().0,
             multisig.internal_key(),
