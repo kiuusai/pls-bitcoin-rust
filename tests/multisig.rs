@@ -1,6 +1,6 @@
-#[suitest::suite(multisig_integration_tests)]
+#[suitest::suite(multisig_e2e_tests)]
 #[suitest::suite_cfg(sequential = false)]
-mod multisig_integration_tests {
+mod multisig_e2e_tests {
     use std::{assert_eq, env, println, vec};
 
     use pls_bitcoin_lib::multisig::{Multisig, MultisigOptions, Utxo};
