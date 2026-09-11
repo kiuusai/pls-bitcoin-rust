@@ -12,28 +12,47 @@ use bitcoin::{
 };
 use bitcoin::{secp256k1, Network};
 
+/// UTXO structure to use when start spending TX spending
 #[derive(Debug, Clone)]
 pub struct Utxo {
+    /// Blockchain reference to UTXO
     pub outpoint: OutPoint,
+    /// Value in sats into the UTXO
     pub value: Amount,
 }
 
+/// Data of each multisig script
 #[derive(Debug, Clone)]
 pub struct MultisigScript {
+    /// Weight of script sort into script tree
     pub weight: usize,
+    /// The script raw data
     pub leaf: ScriptBuf,
+    /// Public keys combination that matches with current script
     pub combination: Vec<PublicKey>,
 }
 
+/// Required data to create multisig
 #[derive(Debug, Clone)]
 pub struct MultisigData {
+    /// The public key list from contractors (involved parts)
     pub parts: Vec<PublicKey>,
+    /// The publc key list from contract arbitrators
     pub arbitrators: Vec<PublicKey>,
+    /// Quorum of minimal necessary arbitrators to unlock funds
     pub quorum: usize,
+    /// Internal public key. It's a critical data.
+    /// If the private key of this one is known, all funds can be sweeped.
+    /// This field exists for compatibility purposes with current on-air system.
+    /// See issue [here](https://github.com/PrivateLawSociety/pls-lib/blob/5d7e963f0c64cb67afc7d61e1a6f92fa40b6cb4c/packages/pls-bitcoin/index.ts#L40)
+    // TODO: Finds a way to create a verifiable one using parts and arbitrators data instead of a
+    // hardcoded one
     pub internal_pubkey: PublicKey,
+    /// Network to create multisig
     pub network: Network,
 }
 
+/// Multisig implementation.
 #[derive(Debug, Clone)]
 pub struct Multisig {
     address: Address,
@@ -47,6 +66,44 @@ pub struct Multisig {
 }
 
 impl Multisig {
+    /// Creates multisig struct
+    /// # Args
+    /// - `data`([MultisigData]): Data to multisig generation
+    /// # Returns
+    /// Created multisig struct
+    /// # Example
+    /// ```rust
+    /// use std::vec;
+    /// use secp256k1::{PublicKey};
+    /// use bitcoin::{Network};
+    /// use pls_bitcoin_lib::{Multisig, MultisigData};
+    ///
+    /// let parts = vec![
+    ///     PublicKey::from_str("02b55f16363d70ae5034cc39554e8ce151254ab380bed2029cc7344807c22e6c1b"),
+    ///     PublicKey::from_str("038677177e7ce4f8090f07661ac39636e4ea921bf28f7e45ba24dcf6ea56aa5f97"),
+    /// ];
+    ///
+    /// let arbitrators = vec![PublicKey::from_str("03017f1ce0d34892be7e930c8eea77f54ce300386dea5e883bf1da60f47d64f547")];
+    ///
+    /// // Internal public key for constructing the multisig
+    /// let internal_pubkey = PublicKey::from_str("03af0c7e8b8cf586f762ce1377a51fc6b7228a9caed4a5dcb43b180acf6824f7c9");
+    ///
+    /// // Minimal arbitrators signatures to unlock with one of the parts
+    /// let quorum = 1;
+    ///
+    /// let network = Network::Regtest;
+    ///
+    /// let multisig = Multisig::new(MultisigData {
+    ///     parts,
+    ///     arbitrators,
+    ///     quorum,
+    ///     internal_pubkey,
+    ///     network,
+    /// });
+    ///
+    /// // Should prints "bcrt1pu0z0pwk4jn3naucadmr8gz9eh2xd3ts5shkat9vkslkms44hpavsvcdleq"
+    /// println!(multisig.address().to_string());
+    /// ```
     pub fn new(data: MultisigData) -> Multisig {
         let secp = Secp256k1::new();
 
@@ -140,30 +197,68 @@ impl Multisig {
         };
     }
 
+    /// # Returns
+    /// Created multisig address.
     pub fn address(&self) -> Address {
         return self.address.clone();
     }
 
+    /// # Returns
+    /// A list with multisig scripts.
+    /// Helps to finds the leaf to unlock the transaction.
     pub fn scripts(&self) -> Vec<MultisigScript> {
         return self.multisig_scripts.clone();
     }
 
+    /// # Returns
+    /// The created multisig [TapTree].
     pub fn script_tree(&self) -> TapTree {
         return self.script_tree.clone();
     }
 
+    /// # Returns
+    /// The x-only of internal publick key.
     pub fn internal_key(&self) -> XOnlyPublicKey {
         return self.internal_key;
     }
 
+    /// # Returns
+    /// The current network of multisig.
     pub fn network(&self) -> Network {
         return self.network;
     }
 
+    /// # Returns
+    /// The arbitrators quorum.
+    /// It's the minimal arbitrators signatures required when the transaction isn't unlocked only
+    /// with parts signatures.
     pub fn quorum(&self) -> usize {
         return self.quorum;
     }
 
+    /// Starts spending of UTXO's that are into multisig address
+    /// # Args
+    /// - `redeem_script`([ScriptBuf]): Script to unlock UTXO's
+    /// - `utxos`: ([Vec]<[Utxo]>): A list of UTXO's to unlock
+    /// - `outs`: ([Vec]<[TxOut]>): A list of outputs as a destination for unlocked funds
+    /// # Returns
+    /// A Partial Signed Bitcoin Transaction (PSBT) that contains the given UTXO's and outputs
+    /// configured to be unlocked with the given redeem script.
+    /// # Usage
+    /// ```rust
+    /// use std::vec;
+    ///
+    /// let multisig = Multisig::new(MultisigData {/* Multisig data */});
+    ///
+    /// // Select it as your preference
+    /// let script_to_select = 0;
+    /// let redeem_script: ScriptBuf = multisig.scripts()[script_to_select];
+    ///
+    /// let utxos: Vec<Utxo> = vec![/* UTXOS to unlock */];
+    /// let outs: Vec<TxOut> = vec![/* Outputs */];
+    ///
+    /// let psbt = multisig.start_tx_spending(redeem_script, utxos, outs);
+    /// ```
     pub fn start_tx_spending(
         &self,
         redeem_script: ScriptBuf,
