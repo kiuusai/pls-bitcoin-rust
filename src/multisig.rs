@@ -26,7 +26,7 @@ pub struct MultisigScript {
 }
 
 #[derive(Debug, Clone)]
-pub struct MultisigOptions {
+pub struct MultisigData {
     pub parts: Vec<PublicKey>,
     pub arbitrators: Vec<PublicKey>,
     pub quorum: usize,
@@ -47,14 +47,14 @@ pub struct Multisig {
 }
 
 impl Multisig {
-    pub fn new(opts: MultisigOptions) -> Multisig {
+    pub fn new(data: MultisigData) -> Multisig {
         let secp = Secp256k1::new();
 
         // Create scripts arrays with each combination for each cases
-        let mut keys_combination: Vec<Vec<PublicKey>> = vec![opts.parts.clone()];
+        let mut keys_combination: Vec<Vec<PublicKey>> = vec![data.parts.clone()];
 
-        opts.parts.into_iter().for_each(|part| {
-            let mut arbitrators_combinations = combine(&opts.arbitrators, opts.quorum);
+        data.parts.into_iter().for_each(|part| {
+            let mut arbitrators_combinations = combine(&data.arbitrators, data.quorum);
 
             arbitrators_combinations.iter_mut().for_each(|combination| {
                 let mut new_combination = vec![part];
@@ -65,7 +65,7 @@ impl Multisig {
         });
 
         // Mount scripts options for multisig
-        let (xonly_internal_pubkey, _) = opts.internal_pubkey.x_only_public_key();
+        let (xonly_internal_pubkey, _) = data.internal_pubkey.x_only_public_key();
 
         let mut scripts: Vec<ScriptBuf> = Vec::new();
 
@@ -125,7 +125,7 @@ impl Multisig {
             &secp,
             xonly_internal_pubkey,
             Some(script_tree.root_hash()),
-            opts.network,
+            data.network,
         );
 
         return Multisig {
@@ -133,8 +133,8 @@ impl Multisig {
             multisig_scripts,
             script_tree,
             internal_key: xonly_internal_pubkey,
-            network: opts.network,
-            quorum: opts.quorum,
+            network: data.network,
+            quorum: data.quorum,
 
             secp,
         };

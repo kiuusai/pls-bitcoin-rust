@@ -3,7 +3,7 @@
 mod multisig_e2e_tests {
     use std::{assert_eq, env, println, vec};
 
-    use pls_bitcoin_lib::multisig::{Multisig, MultisigOptions, Utxo};
+    use pls_bitcoin_lib::multisig::{Multisig, MultisigData, Utxo};
     use pls_bitcoin_lib::utils;
 
     use bitcoin::key::rand::thread_rng;
@@ -57,21 +57,27 @@ mod multisig_e2e_tests {
             let secret_key = SecretKey::new(rng);
             let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
+            println!("part public key: {}", keypair.public_key().to_string());
+
             parts_keypairs.push(keypair);
         }
 
         let secret_key = SecretKey::new(rng);
         let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
+        println!("arbitrator public key: {}", keypair.public_key().to_string());
+
         let arbitrators: Vec<Keypair> = vec![keypair];
 
         let secret_key = SecretKey::new(rng);
         let internal_pubkey = Keypair::from_secret_key(&secp, &secret_key).public_key();
 
+        println!("internal pubkey: {}", internal_pubkey.to_string());
+
         let network = Network::Regtest;
         let quorum = 1;
 
-        let multisig = Multisig::new(MultisigOptions {
+        let multisig = Multisig::new(MultisigData {
             parts: parts_keypairs
                 .iter()
                 .map(|part| part.public_key())
@@ -227,7 +233,7 @@ mod multisig_e2e_tests {
         let network = Network::Regtest;
         let quorum = 1;
 
-        let multisig = Multisig::new(MultisigOptions {
+        let multisig = Multisig::new(MultisigData {
             parts: parts_keypairs
                 .iter()
                 .map(|part| part.public_key())
