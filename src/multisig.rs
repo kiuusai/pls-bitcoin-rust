@@ -1,3 +1,5 @@
+//! Contains core implementation for contracts multisig
+
 use std::vec;
 
 use crate::utils::*;

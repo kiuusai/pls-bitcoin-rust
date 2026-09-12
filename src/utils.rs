@@ -1,3 +1,18 @@
+//! A utilities package with helper functions
+
+/// A helper to generate non repeated combination of items with a specific size.
+/// # Args
+/// - `items`: The items to generate combinations
+/// - `size`: Size of each combination
+/// # Returns
+/// A list of combinations of each item
+/// # Example
+/// Consider the following args to this function:
+/// - items: `[1,2,3,4]`
+/// - size: `2`
+///
+/// It will results into something like:
+/// `[[1,2], [1,3], [1,4], [2,3], [2,4], [3,4]]`
 pub fn combine<T: Clone>(items: &[T], size: usize) -> Vec<Vec<T>> {
     if size == 0 {
         return Vec::new();
@@ -8,7 +23,7 @@ pub fn combine<T: Clone>(items: &[T], size: usize) -> Vec<Vec<T>> {
 
     generate_combinations(items, size, 0, &mut current, &mut result);
 
-    result
+    return result;
 }
 
 fn generate_combinations<T: Clone>(
