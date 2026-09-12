@@ -4,7 +4,7 @@ mod multisig_e2e_tests {
     use std::{assert_eq, env, println, vec};
 
     use pls_bitcoin_lib::multisig::{Multisig, MultisigData, Utxo};
-    use pls_bitcoin_lib::utils;
+    use pls_bitcoin_lib::{utils, SpendingData};
 
     use bitcoin::key::rand::thread_rng;
     use bitcoin::key::Keypair;
@@ -65,7 +65,10 @@ mod multisig_e2e_tests {
         let secret_key = SecretKey::new(rng);
         let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
-        println!("arbitrator public key: {}", keypair.public_key().to_string());
+        println!(
+            "arbitrator public key: {}",
+            keypair.public_key().to_string()
+        );
 
         let arbitrators: Vec<Keypair> = vec![keypair];
 
@@ -335,8 +338,11 @@ mod multisig_e2e_tests {
             script_pubkey: redeemer_address.script_pubkey(),
         }];
 
-        let mut psbt =
-            multisig.start_tx_spending(redeem_script.leaf.clone(), utxos.clone(), outs.clone());
+        let mut psbt = multisig.start_tx_spending(SpendingData {
+            redeem_script: redeem_script.leaf.clone(),
+            outs: outs.clone(),
+            utxos: utxos.clone(),
+        });
 
         let unsigned_tx = psbt.unsigned_tx.clone();
         let mut sighash_cache = SighashCache::new(unsigned_tx);

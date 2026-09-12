@@ -52,6 +52,16 @@ pub struct MultisigData {
     pub network: Network,
 }
 
+/// Required data to start UTXO's spending
+pub struct SpendingData {
+    /// Script to unlock UTXO's
+    pub redeem_script: ScriptBuf,
+    /// A list of UTXO's to unlock
+    pub utxos: Vec<Utxo>,
+    /// A list of outputs as a destination for unlocked funds
+    pub outs: Vec<TxOut>,
+}
+
 /// Multisig implementation.
 #[derive(Debug, Clone)]
 pub struct Multisig {
@@ -238,9 +248,7 @@ impl Multisig {
 
     /// Starts spending of UTXO's that are into multisig address
     /// # Args
-    /// - `redeem_script`([ScriptBuf]): Script to unlock UTXO's
-    /// - `utxos`: ([Vec]<[Utxo]>): A list of UTXO's to unlock
-    /// - `outs`: ([Vec]<[TxOut]>): A list of outputs as a destination for unlocked funds
+    /// - `data`: Data to start transactions spending
     /// # Returns
     /// A Partial Signed Bitcoin Transaction (PSBT) that contains the given UTXO's and outputs
     /// configured to be unlocked with the given redeem script.
@@ -259,15 +267,11 @@ impl Multisig {
     ///
     /// let psbt = multisig.start_tx_spending(redeem_script, utxos, outs);
     /// ```
-    pub fn start_tx_spending(
-        &self,
-        redeem_script: ScriptBuf,
-        utxos: Vec<Utxo>,
-        outs: Vec<TxOut>,
-    ) -> Psbt {
+    pub fn start_tx_spending(&self, data: SpendingData) -> Psbt {
         let unsigned_tx = Transaction {
             version: transaction::Version::TWO,
-            input: utxos
+            input: data
+                .utxos
                 .iter()
                 .map(|utxo| TxIn {
                     previous_output: utxo.outpoint.clone(),
@@ -276,7 +280,7 @@ impl Multisig {
                     witness: Witness::new(),
                 })
                 .collect(),
-            output: outs,
+            output: data.outs,
             lock_time: LockTime::ZERO,
         };
 
@@ -287,10 +291,10 @@ impl Multisig {
         let spend_info = TaprootSpendInfo::from_node_info(&self.secp, self.internal_key, node_info);
 
         let control_block = spend_info
-            .control_block(&(redeem_script.clone(), LeafVersion::TapScript))
+            .control_block(&(data.redeem_script.clone(), LeafVersion::TapScript))
             .unwrap();
 
-        utxos.iter().enumerate().for_each(|(i, utxo)| {
+        data.utxos.iter().enumerate().for_each(|(i, utxo)| {
             let input = &mut psbt.inputs[i];
 
             input.witness_utxo = Some(TxOut {
@@ -299,7 +303,7 @@ impl Multisig {
             });
             input.tap_scripts.insert(
                 control_block.clone(),
-                (redeem_script.clone(), LeafVersion::TapScript),
+                (data.redeem_script.clone(), LeafVersion::TapScript),
             );
         });
 
