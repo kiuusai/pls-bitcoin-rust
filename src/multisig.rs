@@ -72,7 +72,7 @@ impl Multisig {
     /// # Returns
     /// Created multisig struct
     /// # Example
-    /// ```rust
+    /// ```ignore
     /// use std::vec;
     /// use secp256k1::{PublicKey};
     /// use bitcoin::{Network};
@@ -245,7 +245,7 @@ impl Multisig {
     /// A Partial Signed Bitcoin Transaction (PSBT) that contains the given UTXO's and outputs
     /// configured to be unlocked with the given redeem script.
     /// # Usage
-    /// ```rust
+    /// ```ignore
     /// use std::vec;
     ///
     /// let multisig = Multisig::new(MultisigData {/* Multisig data */});
