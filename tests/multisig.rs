@@ -300,7 +300,7 @@ mod multisig_e2e_tests {
 
         assert_eq!(output_address, multisig.address());
 
-        println!("sent {} btc to {} address", output.value, output_address,);
+        println!("sent {} btc to {} address", output.value, output_address);
 
         let redeem_script = multisig
             .scripts()
@@ -440,7 +440,7 @@ mod multisig_e2e_tests {
             "sent {} btc from {} multisig address to {}",
             output.value,
             multisig.address(),
-            redeemer_address
-        )
+            redeemer_address,
+        );
     }
 }
