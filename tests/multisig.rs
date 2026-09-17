@@ -51,7 +51,7 @@ mod multisig_e2e_tests {
 
         let rng = &mut thread_rng();
 
-        let mut parts_keypairs: Vec<Keypair> = Vec::new();
+        let mut parts: Vec<Keypair> = Vec::new();
 
         for _ in 0..2 {
             let secret_key = SecretKey::new(rng);
@@ -59,7 +59,7 @@ mod multisig_e2e_tests {
 
             println!("part public key: {}", keypair.public_key().to_string());
 
-            parts_keypairs.push(keypair);
+            parts.push(keypair);
         }
 
         let secret_key = SecretKey::new(rng);
@@ -81,10 +81,7 @@ mod multisig_e2e_tests {
         let quorum = 1;
 
         let multisig = Multisig::new(MultisigData {
-            parts: parts_keypairs
-                .iter()
-                .map(|part| part.public_key())
-                .collect(),
+            parts: parts.iter().map(|part| part.public_key()).collect(),
             quorum,
             arbitrators: arbitrators
                 .iter()
@@ -103,9 +100,9 @@ mod multisig_e2e_tests {
             multisig.internal_key(),
         );
 
-        let mut combinations: Vec<Vec<Keypair>> = vec![parts_keypairs.clone()];
+        let mut combinations: Vec<Vec<Keypair>> = vec![parts.clone()];
 
-        parts_keypairs.clone().into_iter().for_each(|part| {
+        parts.clone().into_iter().for_each(|part| {
             let mut arbitrators_combinations = utils::combine(&arbitrators, quorum);
 
             arbitrators_combinations.iter_mut().for_each(|combination| {
@@ -157,7 +154,7 @@ mod multisig_e2e_tests {
                 let script = scripts[i].clone();
 
                 let multisig_combination_is_parts = multisig_script.combination.iter().all(|key| {
-                    let pubkeys = parts_keypairs
+                    let pubkeys = parts
                         .clone()
                         .iter()
                         .map(|keypair| keypair.public_key())
