@@ -10,7 +10,7 @@ mod multisig_mount_tests {
     use bitcoin::taproot::{TapTree, TaprootBuilder};
     use bitcoin::{opcodes, Address, Network, ScriptBuf, XOnlyPublicKey};
 
-    use rstest::{rstest};
+    use rstest::rstest;
 
     #[rstest]
     #[case(2, 1, 1)]
@@ -199,7 +199,8 @@ mod multisig_mount_tests {
 }
 
 mod multisig_spending_tests {
-    use std::{assert_eq, env, println, vec};
+    use std::collections::HashMap;
+    use std::{env, println, vec};
 
     use pls_bitcoin_lib::multisig::{Multisig, MultisigData, Utxo};
     use pls_bitcoin_lib::SpendingData;
@@ -233,37 +234,44 @@ mod multisig_spending_tests {
     }
 
     #[rstest]
+    #[case(2, 1, 1)]
+    #[case(5, 2, 2)]
+    #[case(2, 3, 2)]
+    #[case(2, 3, 1)]
     fn it_spends_multisig_values(
         client: &Client,
+        #[case] parts_count: usize,
+        #[case] arbitrators_count: usize,
+        #[case] quorum: usize,
     ) {
         let secp = Secp256k1::new();
         let rng = &mut thread_rng();
 
-        let mut parts_keypairs: Vec<Keypair> = Vec::new();
+        let mut parts: Vec<Keypair> = Vec::new();
 
-        for _ in 0..2 {
+        for _ in 0..parts_count {
             let secret_key = SecretKey::new(rng);
             let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
-            parts_keypairs.push(keypair);
+            parts.push(keypair);
         }
 
-        let secret_key = SecretKey::new(rng);
-        let keypair = Keypair::from_secret_key(&secp, &secret_key);
+        let mut arbitrators: Vec<Keypair> = Vec::new();
 
-        let arbitrators: Vec<Keypair> = vec![keypair];
+        for _ in 0..arbitrators_count {
+            let secret_key = SecretKey::new(rng);
+            let keypair = Keypair::from_secret_key(&secp, &secret_key);
+
+            arbitrators.push(keypair);
+        }
 
         let secret_key = SecretKey::new(rng);
         let internal_pubkey = Keypair::from_secret_key(&secp, &secret_key).public_key();
 
         let network = Network::Regtest;
-        let quorum = 1;
 
         let multisig = Multisig::new(MultisigData {
-            parts: parts_keypairs
-                .iter()
-                .map(|part| part.public_key())
-                .collect(),
+            parts: parts.iter().map(|part| part.public_key()).collect(),
             quorum,
             arbitrators: arbitrators
                 .iter()
@@ -273,197 +281,194 @@ mod multisig_spending_tests {
             network,
         });
 
+        let ghost_address = {
+            let secret_key = PrivateKey::generate(network);
+            let public_key = secret_key.public_key(&secp);
+
+            Address::p2pkh(public_key.pubkey_hash(), network)
+        };
+
         // Needed to generate spendable amounts
         if client.get_block_count().unwrap() < 100 {
-            let ghost_address = {
-                let secret_key = PrivateKey::generate(network);
-                let public_key = secret_key.public_key(&secp);
-
-                Address::p2pkh(public_key.pubkey_hash(), network)
-            };
-
             client.generate_to_address(101, &ghost_address).unwrap();
         }
 
-        let rpc_address = client
-            .get_new_address(None, None)
-            .unwrap()
-            .require_network(network)
-            .unwrap();
+        let mut all_keypairs: HashMap<PublicKey, Keypair> = HashMap::new();
 
-        client.generate_to_address(1, &rpc_address).unwrap();
-
-        let txid = client
-            .send_to_address(
-                &multisig.address(),
-                client.get_balance(Some(0), None).unwrap(),
-                Some("send to multisig"),
-                None,
-                Some(true),
-                None,
-                None,
-                Some(EstimateMode::Economical),
-            )
-            .unwrap();
-
-        let tx = client.get_raw_transaction(&txid, None).unwrap();
-
-        let (output_index, output) = tx
-            .output
-            .iter()
-            .enumerate()
-            .find(|(_, output)| {
-                let address = Address::from_script(&output.script_pubkey, network).unwrap();
-
-                return address == multisig.address();
-            })
-            .unwrap();
-
-        let output_address = Address::from_script(&output.script_pubkey, network).unwrap();
-
-        assert_eq!(output_address, multisig.address());
-
-        println!("sent {} btc to {} address", output.value, output_address);
-
-        let redeem_script = multisig
-            .scripts()
-            .into_iter()
-            .find(|script| {
-                let found_keys: Vec<PublicKey> = script
-                    .combination
-                    .clone()
-                    .into_iter()
-                    .filter(|key| {
-                        parts_keypairs
-                            .iter()
-                            .find(|part| part.public_key().eq(key))
-                            .is_some()
-                    })
-                    .collect();
-
-                return found_keys.len() == parts_keypairs.len();
-            })
-            .unwrap();
-
-        let utxos = vec![Utxo {
-            value: output.value,
-            outpoint: OutPoint::new(txid, output_index as u32),
-        }];
-
-        let redeemer_private_key =
-            bitcoin::PrivateKey::new(parts_keypairs[0].secret_key(), network);
-        let redeemer = redeemer_private_key.public_key(&secp);
-
-        let redeemer_address = Address::p2pkh(redeemer.pubkey_hash(), network);
-
-        let outs = vec![TxOut {
-            value: output.value - Amount::from_sat(200),
-            script_pubkey: redeemer_address.script_pubkey(),
-        }];
-
-        let mut psbt = multisig.start_tx_spending(SpendingData {
-            redeem_script: redeem_script.leaf.clone(),
-            outs: outs.clone(),
-            utxos: utxos.clone(),
+        parts.clone().into_iter().for_each(|part| {
+            all_keypairs.insert(part.public_key(), part);
         });
 
-        let unsigned_tx = psbt.unsigned_tx.clone();
-        let mut sighash_cache = SighashCache::new(unsigned_tx);
+        arbitrators.clone().into_iter().for_each(|arbitrator| {
+            all_keypairs.insert(arbitrator.public_key(), arbitrator);
+        });
 
-        let leaf_hash = TapLeafHash::from_script(
-            redeem_script.leaf.clone().as_script(),
-            LeafVersion::TapScript,
-        );
+        for redeem_script in multisig.scripts() {
+            let rpc_address = client
+                .get_new_address(None, None)
+                .unwrap()
+                .require_network(network)
+                .unwrap();
 
-        let prevouts: Vec<TxOut> = utxos
-            .clone()
-            .iter()
-            .map(|utxo| TxOut {
-                value: utxo.value,
-                script_pubkey: multisig.address().script_pubkey(),
-            })
-            .collect();
+            client.generate_to_address(1, &rpc_address).unwrap();
 
-        for i in 0..psbt.inputs.len() {
-            let sighash = sighash_cache
-                .taproot_script_spend_signature_hash(
-                    i,
-                    &Prevouts::All(&prevouts),
-                    leaf_hash,
-                    TapSighashType::Default,
+            let txid = client
+                .send_to_address(
+                    &multisig.address(),
+                    client.get_balance(Some(0), None).unwrap(),
+                    Some("send to multisig"),
+                    None,
+                    Some(true),
+                    None,
+                    None,
+                    Some(EstimateMode::Economical),
                 )
                 .unwrap();
-            let message = Message::from(sighash);
 
-            for keypair in parts_keypairs.iter() {
-                let signature = secp.sign_schnorr(&message, keypair);
+            let tx = client.get_raw_transaction(&txid, None).unwrap();
 
-                let final_signature = taproot::Signature {
-                    signature,
-                    sighash_type: TapSighashType::Default,
-                };
+            let (output_index, output) = tx
+                .output
+                .iter()
+                .enumerate()
+                .find(|(_, output)| {
+                    let address = Address::from_script(&output.script_pubkey, network).unwrap();
 
-                let (xonly_key, _) = keypair.x_only_public_key();
+                    return address == multisig.address();
+                })
+                .unwrap();
 
-                psbt.inputs[i]
-                    .tap_script_sigs
-                    .insert((xonly_key, leaf_hash), final_signature);
-            }
-        }
+            println!(
+                "sent {} btc to {} address",
+                output.value,
+                multisig.address()
+            );
 
-        let is_completed = parts_keypairs.iter().all(|keypair| {
-            let (xonly, _) = keypair.x_only_public_key();
+            let utxos = vec![Utxo {
+                value: output.value,
+                outpoint: OutPoint::new(txid, output_index as u32),
+            }];
 
-            psbt.inputs
+            let redeemer_private_key = bitcoin::PrivateKey::new(parts[0].secret_key(), network);
+            let redeemer = redeemer_private_key.public_key(&secp);
+
+            let redeemer_address = Address::p2pkh(redeemer.pubkey_hash(), network);
+
+            let outs = vec![TxOut {
+                value: output.value - Amount::from_sat(200),
+                script_pubkey: redeemer_address.script_pubkey(),
+            }];
+
+            let mut psbt = multisig.start_tx_spending(SpendingData {
+                redeem_script: redeem_script.leaf.clone(),
+                outs: outs.clone(),
+                utxos: utxos.clone(),
+            });
+
+            println!("unspent transaction vsize: {}", psbt.unsigned_tx.vsize());
+
+            let unsigned_tx = psbt.unsigned_tx.clone();
+            let mut sighash_cache = SighashCache::new(unsigned_tx);
+
+            let leaf_hash = TapLeafHash::from_script(
+                redeem_script.leaf.clone().as_script(),
+                LeafVersion::TapScript,
+            );
+
+            let prevouts: Vec<TxOut> = utxos
                 .clone()
                 .iter()
-                .all(|input| input.tap_script_sigs.contains_key(&(xonly, leaf_hash)))
-        });
+                .map(|utxo| TxOut {
+                    value: utxo.value,
+                    script_pubkey: multisig.address().script_pubkey(),
+                })
+                .collect();
 
-        assert!(is_completed);
+            for i in 0..psbt.inputs.len() {
+                let sighash = sighash_cache
+                    .taproot_script_spend_signature_hash(
+                        i,
+                        &Prevouts::All(&prevouts),
+                        leaf_hash,
+                        TapSighashType::Default,
+                    )
+                    .unwrap();
+                let message = Message::from(sighash);
 
-        psbt.inputs.iter_mut().for_each(|input| {
-            let mut witness = Witness::new();
+                for public_key in redeem_script.combination.iter() {
+                    let keypair = all_keypairs.get(public_key).unwrap();
 
-            for keypair in parts_keypairs.iter().rev() {
-                let (xonly, _) = keypair.x_only_public_key();
-                let sig = input
-                    .tap_script_sigs
-                    .get(&(xonly, leaf_hash))
-                    .unwrap()
-                    .clone();
-                witness.push(sig.to_vec());
+                    let signature = secp.sign_schnorr(&message, keypair);
+
+                    let final_signature = taproot::Signature {
+                        signature,
+                        sighash_type: TapSighashType::Default,
+                    };
+
+                    let (xonly_key, _) = keypair.x_only_public_key();
+
+                    psbt.inputs[i]
+                        .tap_script_sigs
+                        .insert((xonly_key, leaf_hash), final_signature);
+                }
             }
 
-            let control_block = input.tap_scripts.iter().next().unwrap().0;
+            let is_completed = redeem_script.combination.iter().all(|keypair| {
+                let (xonly, _) = keypair.x_only_public_key();
 
-            witness.push(redeem_script.leaf.clone().to_bytes());
-            witness.push(control_block.serialize());
+                psbt.inputs
+                    .clone()
+                    .iter()
+                    .all(|input| input.tap_script_sigs.contains_key(&(xonly, leaf_hash)))
+            });
 
-            input.final_script_witness = Some(witness);
-            input.tap_script_sigs.clear();
-            input.tap_scripts.clear();
-        });
+            assert!(is_completed);
 
-        let tx = psbt.extract_tx().unwrap();
+            psbt.inputs.iter_mut().for_each(|input| {
+                let mut witness = Witness::new();
 
-        client.send_raw_transaction(&tx).unwrap();
+                for keypair in redeem_script.combination.iter().rev() {
+                    let (xonly, _) = keypair.x_only_public_key();
+                    let sig = input
+                        .tap_script_sigs
+                        .get(&(xonly, leaf_hash))
+                        .unwrap()
+                        .clone();
+                    witness.push(sig.to_vec());
+                }
 
-        let output = tx
-            .output
-            .iter()
-            .find(|output| {
-                let address = Address::from_script(&output.script_pubkey, network).unwrap();
+                let control_block = input.tap_scripts.iter().next().unwrap().0;
 
-                address == redeemer_address
-            })
-            .unwrap();
+                witness.push(redeem_script.leaf.clone().to_bytes());
+                witness.push(control_block.serialize());
 
-        println!(
-            "sent {} btc from {} multisig address to {}",
-            output.value,
-            multisig.address(),
-            redeemer_address,
-        );
+                input.final_script_witness = Some(witness);
+                input.tap_script_sigs.clear();
+                input.tap_scripts.clear();
+            });
+
+            let tx = psbt.extract_tx().unwrap();
+
+            println!("final tx vsize: {}", tx.vsize());
+
+            client.send_raw_transaction(&tx).unwrap();
+
+            let output = tx
+                .output
+                .iter()
+                .find(|output| {
+                    let address = Address::from_script(&output.script_pubkey, network).unwrap();
+
+                    address == redeemer_address
+                })
+                .unwrap();
+
+            println!(
+                "sent {} btc from {} multisig address to {}",
+                output.value,
+                multisig.address(),
+                redeemer_address,
+            );
+        }
     }
 }
