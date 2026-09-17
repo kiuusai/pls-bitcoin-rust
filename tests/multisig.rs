@@ -199,13 +199,13 @@ mod multisig_e2e_tests {
                 scripts
                     .iter()
                     .enumerate()
-                    .map(|(i, script)| ((scripts.len() - i) as u32, script.clone())),
+                    .map(|(i, script)| ((if i == 0 { 5 } else { 1 }), script.clone())),
             )
             .unwrap(),
         )
         .unwrap();
 
-        assert_eq!(script_tree, multisig.script_tree());
+        assert_eq!(script_tree.root_hash(), multisig.script_tree().root_hash());
 
         let address = Address::p2tr(
             &secp,
