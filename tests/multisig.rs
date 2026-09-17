@@ -3,9 +3,9 @@ mod multisig_mount_tests {
 
     use pls_bitcoin_lib::{utils, Multisig, MultisigData};
 
-    use bitcoin::secp256k1::rand::thread_rng;
     use bitcoin::key::Keypair;
     use bitcoin::script::Builder;
+    use bitcoin::secp256k1::rand::thread_rng;
     use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
     use bitcoin::taproot::{TapTree, TaprootBuilder};
     use bitcoin::{opcodes, Address, Network, ScriptBuf, XOnlyPublicKey};
@@ -199,26 +199,25 @@ mod multisig_mount_tests {
 }
 
 mod multisig_spending_tests {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::time::Duration;
     use std::{println, vec};
 
     use pls_bitcoin_lib::multisig::{Multisig, MultisigData, Utxo};
     use pls_bitcoin_lib::SpendingData;
 
-    use bitcoin::secp256k1::rand::thread_rng;
     use bitcoin::absolute::LockTime;
     use bitcoin::consensus::encode::serialize_hex;
     use bitcoin::key::Keypair;
+    use bitcoin::secp256k1::rand::thread_rng;
     use bitcoin::secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
     use bitcoin::sighash::{Prevouts, SighashCache};
     use bitcoin::taproot::{self, LeafVersion};
     use bitcoin::{
-        Address, Amount, Network, OutPoint, PrivateKey, TapLeafHash, TapSighashType, TxOut, Witness,
+        Address, Amount, Network, OutPoint, PrivateKey, TapLeafHash, TapSighashType, TxOut, Txid, Witness,
     };
-    use nigiri_rs::{Bitcoin, NigiriClient};
-    use rstest::{rstest};
-    use tokio::time::{interval};
+    use nigiri_rs::{Bitcoin, BitcoinUtxo, NigiriClient};
+    use rstest::rstest;
 
     #[rstest]
     #[case(2, 1, 1)]
@@ -289,37 +288,41 @@ mod multisig_spending_tests {
         for (i, redeem_script) in multisig.scripts().iter().enumerate() {
             println!("script {} being tested", i);
 
+            println!("sending 1 BTC to multisig address");
+
             let txid = client
                 .faucet(&multisig.address().to_string(), Some(Amount::ONE_BTC))
                 .await
                 .unwrap();
 
-            let mut timer = interval(Duration::from_millis(100));
-
-            loop {
-                timer.tick().await;
-
-                let status = client.get_tx_status(&txid).await.unwrap();
-
-                if !status.confirmed {
-                    continue;
-                }
-
-                break;
-            }
-
             println!("faucet tx: {}", txid);
-            println!(
-                "tx status: {:?}",
-                client.get_tx_status(&txid).await.unwrap()
-            );
 
-            println!("sending 1 BTC to multisig address");
+            client
+                .wait_for_confirmation(&txid, Duration::MAX)
+                .await
+                .unwrap();
 
             let outputs = client
                 .get_utxos(&multisig.address().to_string())
                 .await
                 .unwrap();
+
+            // Ensures that outputs are not repeated
+            // Necessary to avoid API errors
+            let mut vouts: HashSet<(u32, Txid)> = HashSet::new();
+            let outputs: Vec<BitcoinUtxo> = outputs
+                .into_iter()
+                .filter(|out| {
+                    let exists = vouts.contains(&(out.vout, out.txid));
+
+                    if exists {
+                        return false;
+                    }
+
+                    vouts.insert((out.vout, out.txid));
+                    return true;
+                })
+                .collect();
 
             println!("outputs: {:?}", outputs);
 
