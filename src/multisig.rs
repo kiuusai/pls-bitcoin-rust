@@ -62,6 +62,11 @@ pub struct SpendingData {
     pub utxos: Vec<Utxo>,
     /// A list of outputs as a destination for unlocked funds
     pub outs: Vec<TxOut>,
+    /// Lock time for generated transaction.
+    /// It blocks the transaction based in an absoulute time verification.
+    /// IMPORTANT: This field blocks the transaction from be mined.
+    /// So nodes will rejects this transaction until timestamps requirements being successfully completed.
+    pub lock_time: Option<LockTime>,
 }
 
 /// Multisig implementation.
@@ -283,7 +288,7 @@ impl Multisig {
                 })
                 .collect(),
             output: data.outs,
-            lock_time: LockTime::ZERO,
+            lock_time: data.lock_time.unwrap_or(LockTime::ZERO),
         };
 
         let mut psbt = Psbt::from_unsigned_tx(unsigned_tx).unwrap();

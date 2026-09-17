@@ -201,7 +201,7 @@ mod multisig_mount_tests {
 mod multisig_spending_tests {
     use std::collections::{HashMap, HashSet};
     use std::time::Duration;
-    use std::{println, vec};
+    use std::{assert_matches, println, vec};
 
     use pls_bitcoin_lib::multisig::{Multisig, MultisigData, Utxo};
     use pls_bitcoin_lib::SpendingData;
@@ -214,9 +214,10 @@ mod multisig_spending_tests {
     use bitcoin::sighash::{Prevouts, SighashCache};
     use bitcoin::taproot::{self, LeafVersion};
     use bitcoin::{
-        Address, Amount, Network, OutPoint, PrivateKey, TapLeafHash, TapSighashType, TxOut, Txid, Witness,
+        Address, Amount, Network, OutPoint, PrivateKey, TapLeafHash, TapSighashType, TxOut, Txid,
+        Witness,
     };
-    use nigiri_rs::{Bitcoin, BitcoinUtxo, NigiriClient};
+    use nigiri_rs::{Bitcoin, BitcoinUtxo, NigiriClient, NigiriError};
     use rstest::rstest;
 
     #[rstest]
@@ -230,6 +231,7 @@ mod multisig_spending_tests {
         #[case] parts_count: usize,
         #[case] arbitrators_count: usize,
         #[case] quorum: usize,
+        #[values(0, 1, 5)] blocks_to_lock: usize,
     ) {
         let secp = Secp256k1::new();
         let rng = &mut thread_rng();
@@ -357,10 +359,19 @@ mod multisig_spending_tests {
                 script_pubkey: redeemer_address.script_pubkey(),
             }];
 
+            let lock_time: Option<LockTime> = if blocks_to_lock > 0 {
+                let current_block = client.block_height().await.unwrap();
+
+                Some(LockTime::from_height(current_block as u32 + blocks_to_lock as u32).unwrap())
+            } else {
+                None
+            };
+
             let mut psbt = multisig.start_tx_spending(SpendingData {
                 redeem_script: redeem_script.leaf.clone(),
                 outs: outs.clone(),
                 utxos: utxos.clone(),
+                lock_time,
             });
 
             println!("unspent transaction vsize: {}", psbt.unsigned_tx.vsize());
@@ -456,6 +467,34 @@ mod multisig_spending_tests {
             let tx = psbt.extract_tx().unwrap();
 
             println!("final tx vsize: {}", tx.vsize());
+
+            if blocks_to_lock > 0 {
+                println!("needs {} mined blocks to spend", blocks_to_lock);
+
+                // Ensures that broadcast transaction fails until satisfies locktime
+                for _ in 0..blocks_to_lock {
+                    let res = client.broadcast_tx(&serialize_hex(&tx)).await;
+
+                    assert!(res.is_err(), "res is: {:?}", res);
+
+                    let res_err = res.unwrap_err();
+
+                    // Asserts that transaction was not processed because of the locktime
+                    assert_matches!(
+                        res_err,
+                        NigiriError::RpcFailed {
+                            code: -26,
+                            ref method,
+                            ref message,
+                        } if method == "sendrawtransaction" && message == "non-final"
+                    );
+
+                    client
+                        .generate_to_address(1 as u64, &ghost_address.to_string())
+                        .await
+                        .unwrap();
+                }
+            }
 
             client.broadcast_tx(&serialize_hex(&tx)).await.unwrap();
 
