@@ -3,7 +3,7 @@ mod multisig_mount_tests {
 
     use pls_bitcoin_lib::{utils, Multisig, MultisigData};
 
-    use bitcoin::key::rand::thread_rng;
+    use bitcoin::secp256k1::rand::thread_rng;
     use bitcoin::key::Keypair;
     use bitcoin::script::Builder;
     use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
@@ -200,12 +200,15 @@ mod multisig_mount_tests {
 
 mod multisig_spending_tests {
     use std::collections::HashMap;
-    use std::{env, println, vec};
+    use std::time::Duration;
+    use std::{println, vec};
 
     use pls_bitcoin_lib::multisig::{Multisig, MultisigData, Utxo};
     use pls_bitcoin_lib::SpendingData;
 
-    use bitcoin::key::rand::thread_rng;
+    use bitcoin::secp256k1::rand::thread_rng;
+    use bitcoin::absolute::LockTime;
+    use bitcoin::consensus::encode::serialize_hex;
     use bitcoin::key::Keypair;
     use bitcoin::secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
     use bitcoin::sighash::{Prevouts, SighashCache};
@@ -213,33 +216,18 @@ mod multisig_spending_tests {
     use bitcoin::{
         Address, Amount, Network, OutPoint, PrivateKey, TapLeafHash, TapSighashType, TxOut, Witness,
     };
-    use bitcoincore_rpc::json::EstimateMode;
-    use bitcoincore_rpc::{Auth, Client, RpcApi};
-    use dotenv::dotenv;
-    use rstest::{fixture, rstest};
-
-    #[fixture]
-    #[once]
-    fn client() -> Client {
-        // It loads the dotenv and ignore errors if file doesn't exists
-        let _ = dotenv();
-
-        let node_url = env::var("RPC_NODE_URL").unwrap_or(String::from("http://0.0.0.0:18443"));
-        let user = env::var("RPC_USER").unwrap_or(String::from("admin1"));
-        let pass = env::var("RPC_PASSWORD").unwrap_or(String::from("123"));
-
-        let client = Client::new(&node_url, Auth::UserPass(user, pass)).unwrap();
-
-        return client;
-    }
+    use nigiri_rs::{Bitcoin, NigiriClient};
+    use rstest::{rstest};
+    use tokio::time::{interval};
 
     #[rstest]
     #[case(2, 1, 1)]
     #[case(5, 2, 2)]
     #[case(2, 3, 2)]
     #[case(2, 3, 1)]
-    fn it_spends_multisig_values(
-        client: &Client,
+    #[nigiri_rs::test]
+    async fn it_spends_multisig_values(
+        #[ignore] client: NigiriClient<Bitcoin>,
         #[case] parts_count: usize,
         #[case] arbitrators_count: usize,
         #[case] quorum: usize,
@@ -282,16 +270,11 @@ mod multisig_spending_tests {
         });
 
         let ghost_address = {
-            let secret_key = PrivateKey::generate(network);
+            let secret_key = PrivateKey::new(SecretKey::new(rng), network);
             let public_key = secret_key.public_key(&secp);
 
             Address::p2pkh(public_key.pubkey_hash(), network)
         };
-
-        // Needed to generate spendable amounts
-        if client.get_block_count().unwrap() < 100 {
-            client.generate_to_address(101, &ghost_address).unwrap();
-        }
 
         let mut all_keypairs: HashMap<PublicKey, Keypair> = HashMap::new();
 
@@ -303,59 +286,71 @@ mod multisig_spending_tests {
             all_keypairs.insert(arbitrator.public_key(), arbitrator);
         });
 
-        for redeem_script in multisig.scripts() {
-            let rpc_address = client
-                .get_new_address(None, None)
-                .unwrap()
-                .require_network(network)
-                .unwrap();
-
-            client.generate_to_address(1, &rpc_address).unwrap();
+        for (i, redeem_script) in multisig.scripts().iter().enumerate() {
+            println!("script {} being tested", i);
 
             let txid = client
-                .send_to_address(
-                    &multisig.address(),
-                    client.get_balance(Some(0), None).unwrap(),
-                    Some("send to multisig"),
-                    None,
-                    Some(true),
-                    None,
-                    None,
-                    Some(EstimateMode::Economical),
-                )
+                .faucet(&multisig.address().to_string(), Some(Amount::ONE_BTC))
+                .await
                 .unwrap();
 
-            let tx = client.get_raw_transaction(&txid, None).unwrap();
+            let mut timer = interval(Duration::from_millis(100));
 
-            let (output_index, output) = tx
-                .output
-                .iter()
-                .enumerate()
-                .find(|(_, output)| {
-                    let address = Address::from_script(&output.script_pubkey, network).unwrap();
+            loop {
+                timer.tick().await;
 
-                    return address == multisig.address();
-                })
-                .unwrap();
+                let status = client.get_tx_status(&txid).await.unwrap();
 
+                if !status.confirmed {
+                    continue;
+                }
+
+                break;
+            }
+
+            println!("faucet tx: {}", txid);
             println!(
-                "sent {} btc to {} address",
-                output.value,
-                multisig.address()
+                "tx status: {:?}",
+                client.get_tx_status(&txid).await.unwrap()
             );
 
-            let utxos = vec![Utxo {
-                value: output.value,
-                outpoint: OutPoint::new(txid, output_index as u32),
-            }];
+            println!("sending 1 BTC to multisig address");
+
+            let outputs = client
+                .get_utxos(&multisig.address().to_string())
+                .await
+                .unwrap();
+
+            println!("outputs: {:?}", outputs);
+
+            let balance = outputs
+                .iter()
+                .map(|out| out.value)
+                .reduce(|acc, e| acc + e)
+                .unwrap();
+
+            println!("sent {} btc to {} address", balance, multisig.address());
+
+            let utxos: Vec<Utxo> = outputs
+                .iter()
+                .map(|out| Utxo {
+                    value: out.value,
+                    outpoint: OutPoint {
+                        txid,
+                        vout: out.vout,
+                    },
+                })
+                .collect();
 
             let redeemer_private_key = bitcoin::PrivateKey::new(parts[0].secret_key(), network);
             let redeemer = redeemer_private_key.public_key(&secp);
 
             let redeemer_address = Address::p2pkh(redeemer.pubkey_hash(), network);
 
+            let fee = Amount::from_sat(1000);
+
             let outs = vec![TxOut {
-                value: output.value - Amount::from_sat(200),
+                value: balance - fee,
                 script_pubkey: redeemer_address.script_pubkey(),
             }];
 
@@ -413,8 +408,8 @@ mod multisig_spending_tests {
                 }
             }
 
-            let is_completed = redeem_script.combination.iter().all(|keypair| {
-                let (xonly, _) = keypair.x_only_public_key();
+            let is_completed = redeem_script.combination.iter().all(|public_key| {
+                let (xonly, _) = public_key.x_only_public_key();
 
                 psbt.inputs
                     .clone()
@@ -427,8 +422,8 @@ mod multisig_spending_tests {
             psbt.inputs.iter_mut().for_each(|input| {
                 let mut witness = Witness::new();
 
-                for keypair in redeem_script.combination.iter().rev() {
-                    let (xonly, _) = keypair.x_only_public_key();
+                for public_key in redeem_script.combination.iter().rev() {
+                    let (xonly, _) = public_key.x_only_public_key();
                     let sig = input
                         .tap_script_sigs
                         .get(&(xonly, leaf_hash))
@@ -437,7 +432,15 @@ mod multisig_spending_tests {
                     witness.push(sig.to_vec());
                 }
 
-                let control_block = input.tap_scripts.iter().next().unwrap().0;
+                let control_block = input
+                    .tap_scripts
+                    .iter()
+                    .find(|tap_script| {
+                        let (_, (leaf, _)) = tap_script;
+                        redeem_script.leaf == leaf.clone()
+                    })
+                    .unwrap()
+                    .0;
 
                 witness.push(redeem_script.leaf.clone().to_bytes());
                 witness.push(control_block.serialize());
@@ -451,7 +454,7 @@ mod multisig_spending_tests {
 
             println!("final tx vsize: {}", tx.vsize());
 
-            client.send_raw_transaction(&tx).unwrap();
+            client.broadcast_tx(&serialize_hex(&tx)).await.unwrap();
 
             let output = tx
                 .output
@@ -470,5 +473,7 @@ mod multisig_spending_tests {
                 redeemer_address,
             );
         }
+
+        println!("test finished");
     }
 }

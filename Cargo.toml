@@ -7,8 +7,9 @@ license = "MIT"
 
 [dependencies]
 bitcoin = "0.32.102"
-rstest = "0.27.0"
 
 [dev-dependencies]
-bitcoincore-rpc = "0.19.0"
-dotenv = "0.15.0"
+bitcoin = { version = "0.32.102", features = ["encoding", "rand"] }
+rstest = "0.27.0"
+nigiri-rs = { version = "0.6", features = ["fixtures"] }
+tokio = { version = "1.53.1", features = ["macros", "rt", "rt-multi-thread"] }
