@@ -113,6 +113,23 @@ mod multisig_e2e_tests {
             });
         });
 
+        let combinations_pubkeys: Vec<Vec<PublicKey>> = combinations
+            .iter()
+            .map(|combination| {
+                combination
+                    .iter()
+                    .map(|keypair| PublicKey::from_secret_key(&secp, &keypair.secret_key()))
+                    .collect()
+            })
+            .collect();
+        let multisig_combinations_pubkeys: Vec<Vec<PublicKey>> = multisig
+            .scripts()
+            .iter()
+            .map(|script| script.combination.clone())
+            .collect();
+
+        assert_eq!(combinations_pubkeys, multisig_combinations_pubkeys);
+
         let mut scripts: Vec<ScriptBuf> = Vec::new();
 
         combinations.iter().for_each(|combination| {
