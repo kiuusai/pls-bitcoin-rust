@@ -1,59 +1,34 @@
-#[suitest::suite(multisig_e2e_tests)]
-#[suitest::suite_cfg(sequential = false)]
-mod multisig_e2e_tests {
-    use std::{assert_eq, env, println, vec};
+mod multisig_mount_tests {
+    use std::{assert_eq, println, vec};
 
-    use pls_bitcoin_lib::multisig::{Multisig, MultisigData, Utxo};
-    use pls_bitcoin_lib::{utils, SpendingData};
+    use pls_bitcoin_lib::{utils, Multisig, MultisigData};
 
     use bitcoin::key::rand::thread_rng;
     use bitcoin::key::Keypair;
     use bitcoin::script::Builder;
-    use bitcoin::secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
-    use bitcoin::sighash::{Prevouts, SighashCache};
-    use bitcoin::taproot::{self, LeafVersion, TapTree, TaprootBuilder};
-    use bitcoin::{
-        opcodes, Address, Amount, Network, OutPoint, PrivateKey, ScriptBuf, TapLeafHash,
-        TapSighashType, TxOut, Witness, XOnlyPublicKey,
-    };
-    use bitcoincore_rpc::json::EstimateMode;
-    use bitcoincore_rpc::{Auth, Client, RpcApi};
-    use dotenv::dotenv;
-    use suitest::before_all;
+    use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
+    use bitcoin::taproot::{TapTree, TaprootBuilder};
+    use bitcoin::{opcodes, Address, Network, ScriptBuf, XOnlyPublicKey};
 
-    #[derive(Debug, Clone)]
-    struct TestConfig {
-        node_url: String,
-        user: String,
-        pass: String,
-    }
+    use rstest::{rstest};
 
-    #[before_all]
-    fn config() -> (TestConfig,) {
-        // It loads the dotenv and ignore errors if file doesn't exists
-        let _ = dotenv();
-
-        let node_url = env::var("RPC_NODE_URL").unwrap_or(String::from("http://0.0.0.0:18443"));
-        let user = env::var("RPC_USER").unwrap_or(String::from("admin1"));
-        let pass = env::var("RPC_PASSWORD").unwrap_or(String::from("123"));
-
-        (TestConfig {
-            // Use nigiri to make it works instantly
-            node_url,
-            user,
-            pass,
-        },)
-    }
-
-    #[test]
-    fn it_verifies_multisig_creation(_config: TestConfig) {
+    #[rstest]
+    #[case(2, 1, 1)]
+    #[case(5, 2, 2)]
+    #[case(2, 3, 2)]
+    #[case(2, 3, 1)]
+    fn it_verifies_multisig_creation(
+        #[case] parts_count: usize,
+        #[case] arbitrators_count: usize,
+        #[case] quorum: usize,
+    ) {
         let secp = Secp256k1::new();
 
         let rng = &mut thread_rng();
 
         let mut parts: Vec<Keypair> = Vec::new();
 
-        for _ in 0..2 {
+        for _ in 0..parts_count {
             let secret_key = SecretKey::new(rng);
             let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
@@ -62,15 +37,19 @@ mod multisig_e2e_tests {
             parts.push(keypair);
         }
 
-        let secret_key = SecretKey::new(rng);
-        let keypair = Keypair::from_secret_key(&secp, &secret_key);
+        let mut arbitrators: Vec<Keypair> = Vec::new();
 
-        println!(
-            "arbitrator public key: {}",
-            keypair.public_key().to_string()
-        );
+        for _ in 0..arbitrators_count {
+            let secret_key = SecretKey::new(rng);
+            let keypair = Keypair::from_secret_key(&secp, &secret_key);
 
-        let arbitrators: Vec<Keypair> = vec![keypair];
+            println!(
+                "arbitrator public key: {}",
+                keypair.public_key().to_string()
+            );
+
+            arbitrators.push(keypair);
+        }
 
         let secret_key = SecretKey::new(rng);
         let internal_pubkey = Keypair::from_secret_key(&secp, &secret_key).public_key();
@@ -78,7 +57,6 @@ mod multisig_e2e_tests {
         println!("internal pubkey: {}", internal_pubkey.to_string());
 
         let network = Network::Regtest;
-        let quorum = 1;
 
         let multisig = Multisig::new(MultisigData {
             parts: parts.iter().map(|part| part.public_key()).collect(),
@@ -218,9 +196,56 @@ mod multisig_e2e_tests {
 
         println!("Bitcoin address: {}", multisig.address().to_string());
     }
+}
 
-    #[test]
-    fn it_spends_multisig_values(config: TestConfig) {
+mod multisig_spending_tests {
+    use std::{assert_eq, env, println, vec};
+
+    use pls_bitcoin_lib::multisig::{Multisig, MultisigData, Utxo};
+    use pls_bitcoin_lib::SpendingData;
+
+    use bitcoin::key::rand::thread_rng;
+    use bitcoin::key::Keypair;
+    use bitcoin::secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
+    use bitcoin::sighash::{Prevouts, SighashCache};
+    use bitcoin::taproot::{self, LeafVersion};
+    use bitcoin::{
+        Address, Amount, Network, OutPoint, PrivateKey, TapLeafHash, TapSighashType, TxOut, Witness,
+    };
+    use bitcoincore_rpc::json::EstimateMode;
+    use bitcoincore_rpc::{Auth, Client, RpcApi};
+    use dotenv::dotenv;
+    use rstest::{fixture, rstest};
+
+    #[derive(Debug, Clone)]
+    struct TestConfig {
+        node_url: String,
+        user: String,
+        pass: String,
+    }
+
+    #[fixture]
+    #[once]
+    fn config() -> TestConfig {
+        // It loads the dotenv and ignore errors if file doesn't exists
+        let _ = dotenv();
+
+        let node_url = env::var("RPC_NODE_URL").unwrap_or(String::from("http://0.0.0.0:18443"));
+        let user = env::var("RPC_USER").unwrap_or(String::from("admin1"));
+        let pass = env::var("RPC_PASSWORD").unwrap_or(String::from("123"));
+
+        TestConfig {
+            // Use nigiri to make it works instantly
+            node_url,
+            user,
+            pass,
+        }
+    }
+
+    #[rstest]
+    fn it_spends_multisig_values(
+        config: &TestConfig,
+    ) {
         let secp = Secp256k1::new();
         let rng = &mut thread_rng();
 
