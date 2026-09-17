@@ -217,16 +217,9 @@ mod multisig_spending_tests {
     use dotenv::dotenv;
     use rstest::{fixture, rstest};
 
-    #[derive(Debug, Clone)]
-    struct TestConfig {
-        node_url: String,
-        user: String,
-        pass: String,
-    }
-
     #[fixture]
     #[once]
-    fn config() -> TestConfig {
+    fn client() -> Client {
         // It loads the dotenv and ignore errors if file doesn't exists
         let _ = dotenv();
 
@@ -234,26 +227,17 @@ mod multisig_spending_tests {
         let user = env::var("RPC_USER").unwrap_or(String::from("admin1"));
         let pass = env::var("RPC_PASSWORD").unwrap_or(String::from("123"));
 
-        TestConfig {
-            // Use nigiri to make it works instantly
-            node_url,
-            user,
-            pass,
-        }
+        let client = Client::new(&node_url, Auth::UserPass(user, pass)).unwrap();
+
+        return client;
     }
 
     #[rstest]
     fn it_spends_multisig_values(
-        config: &TestConfig,
+        client: &Client,
     ) {
         let secp = Secp256k1::new();
         let rng = &mut thread_rng();
-
-        let client = Client::new(
-            &config.node_url,
-            Auth::UserPass(config.user.clone(), config.pass.clone()),
-        )
-        .unwrap();
 
         let mut parts_keypairs: Vec<Keypair> = Vec::new();
 
