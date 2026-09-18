@@ -4,6 +4,7 @@ version = "0.2.4"
 edition = "2021"
 description = "A Bitcoin contracts constructor lib for Private Law Society project"
 license = "MIT"
+repository = "https://github.com/kiuusai/pls-bitcoin-rust"
 
 [dependencies]
 bitcoin = "0.32.102"
