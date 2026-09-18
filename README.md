@@ -25,8 +25,6 @@ Every tool used here are optional. But all help you develop faster. So consider 
 See a resume of environment helpers:
 - [Devcontainers](#devcontainers)
 - [ASDF](#asdf)
-- [Nigiri (inside Devcontainers)](#nigiri-inside-devcontainers)
-
 
 Also, see some topics to work with this project:
 - [Executing automated tests](#executing-automated-tests)
@@ -106,27 +104,7 @@ In project root install tools:
 asdf install
 ```
 
-### Nigiri (inside Devcontainers)
-
-[Nigiri](https://github.com/vulpemventures/nigiri) are being used as a helper to e2e tests.
-It's installed in devcontainers and it's necessary to run e2e tests correctly.
-
-#### Using Nigiri
-
-Inside devcontainer you can start Nigiri by just doing:
-```bash
-nigiri start
-```
-
-To prune Nigiri data you can stop it with `--delete` flag:
-```bash
-nigiri stop --delete
-```
-
 ### Executing automated tests
-
-`DISCLAIMER`: You need nigiri instance started to run automated tests.
-See [Nigiri (inside Devcontainers)](#nigiri-inside-devcontainers) for more information.
 
 To execute automated tests just execute this command in root folder:
 ```bash
