@@ -262,17 +262,29 @@ impl Multisig {
     /// # Usage
     /// ```ignore
     /// use std::vec;
+    /// use pls_bitcoin_lib::{Multisig, MultisigData, SpendingData, Utxo};
+    /// use bitcoin::{ScriptBuf, TxOut};
+    /// use bitcoin::absolute::LockTime;
     ///
     /// let multisig = Multisig::new(MultisigData {/* Multisig data */});
     ///
-    /// // Select it as your preference
+    /// // Select it considering the combination field to unlock
     /// let script_to_select = 0;
     /// let redeem_script: ScriptBuf = multisig.scripts()[script_to_select];
     ///
     /// let utxos: Vec<Utxo> = vec![/* UTXOS to unlock */];
     /// let outs: Vec<TxOut> = vec![/* Outputs */];
     ///
-    /// let psbt = multisig.start_tx_spending(redeem_script, utxos, outs);
+    /// // Blocks the transaction from being mined until it satisfies the locktime condition
+    /// let lock_time = LockTime::from_height(990100).unwrap();
+    ///
+    /// let psbt = multisig.start_tx_spending(SpendingData{
+    ///     redeem_script,
+    ///     utxos,
+    ///     outs,
+    ///     // Send it as none if you don't want to use locktime condition
+    ///     lock_time: Some(lock_time),
+    /// });
     /// ```
     pub fn start_tx_spending(&self, data: SpendingData) -> Psbt {
         let unsigned_tx = Transaction {
