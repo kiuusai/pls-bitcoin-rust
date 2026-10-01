@@ -20,7 +20,7 @@ mod multisig_old_compatibility_tests {
         )
         .unwrap();
 
-        let parts_keys: IndexSet<bitcoin::secp256k1::XOnlyPublicKey> = parts_keys_str
+        let parts_keys: IndexSet<XOnlyPublicKey> = parts_keys_str
             .iter()
             .map(|key_str| {
                 let pubkey = XOnlyPublicKey::from_str(key_str).unwrap();

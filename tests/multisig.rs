@@ -100,7 +100,7 @@ mod multisig_mount_tests {
             .map(|combination| {
                 combination
                     .iter()
-                    .map(|keypair| keypair.public_key().x_only_public_key().0)
+                    .map(|keypair| keypair.x_only_public_key().0)
                     .collect()
             })
             .collect();
@@ -153,11 +153,11 @@ mod multisig_mount_tests {
                 let script = scripts[i].clone();
 
                 let multisig_combination_is_parts = multisig_script.combination.iter().all(|key| {
-                    let pubkeys = parts
+                    let pubkeys: Vec<XOnlyPublicKey> = parts
                         .clone()
                         .iter()
                         .map(|keypair| keypair.x_only_public_key().0)
-                        .collect::<Vec<XOnlyPublicKey>>();
+                        .collect();
                     pubkeys.contains(key)
                 });
 
@@ -289,11 +289,11 @@ mod multisig_spending_tests {
         let mut all_keypairs: HashMap<XOnlyPublicKey, Keypair> = HashMap::new();
 
         parts.clone().into_iter().for_each(|part| {
-            all_keypairs.insert(part.public_key().x_only_public_key().0, part);
+            all_keypairs.insert(part.x_only_public_key().0, part);
         });
 
         arbitrators.clone().into_iter().for_each(|arbitrator| {
-            all_keypairs.insert(arbitrator.public_key().x_only_public_key().0, arbitrator);
+            all_keypairs.insert(arbitrator.x_only_public_key().0, arbitrator);
         });
 
         for (i, redeem_script) in multisig.scripts().iter().enumerate() {
