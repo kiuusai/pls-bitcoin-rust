@@ -1,23 +1,28 @@
 mod multisig_errors_handling {
-    use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
+    use bitcoin::secp256k1::rand::thread_rng;
+    use bitcoin::secp256k1::{PublicKey, XOnlyPublicKey, Secp256k1, SecretKey};
     use bitcoin::{Network, ScriptBuf};
     use indexmap::IndexSet;
     use pls_bitcoin_lib::{Multisig, MultisigData, MultisigError, SpendingData, SpendingError};
     use rstest::{fixture, rstest};
 
-    fn key(byte: u8) -> PublicKey {
+    fn key() -> PublicKey {
         let secp = Secp256k1::new();
-        let secret = SecretKey::from_slice(&[byte; 32]).unwrap();
+        let secret = SecretKey::new(&mut thread_rng());
         PublicKey::from_secret_key(&secp, &secret)
+    }
+
+    fn x_only_key() -> XOnlyPublicKey {
+        key().x_only_public_key().0
     }
 
     #[fixture]
     fn multisig_data() -> MultisigData {
         MultisigData {
-            parts: IndexSet::from([key(1).x_only_public_key().0]),
-            arbitrators: IndexSet::from([key(2).x_only_public_key().0]),
+            parts: IndexSet::from([x_only_key()]),
+            arbitrators: IndexSet::from([x_only_key()]),
             quorum: 1,
-            internal_pubkey: key(3),
+            internal_pubkey: key(),
             network: Network::Regtest,
         }
     }
@@ -31,12 +36,12 @@ mod multisig_errors_handling {
 
     #[fixture]
     fn multisig_data_with_arbitrator_also_in_parts() -> MultisigData {
-        let part = key(6).x_only_public_key().0;
+        let part = x_only_key();
         MultisigData {
             parts: IndexSet::from([part]),
             arbitrators: IndexSet::from([part]),
             quorum: 1,
-            internal_pubkey: key(7),
+            internal_pubkey: key(),
             network: Network::Regtest,
         }
     }
