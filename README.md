@@ -141,12 +141,12 @@ use secp256k1::{PublicKey};
 use bitcoin::{Network};
 use pls_bitcoin_lib::{Multisig, MultisigData};
 
-let parts = vec![
-    PublicKey::from_str("02b55f16363d70ae5034cc39554e8ce151254ab380bed2029cc7344807c22e6c1b"),
-    PublicKey::from_str("038677177e7ce4f8090f07661ac39636e4ea921bf28f7e45ba24dcf6ea56aa5f97"),
-];
+let parts = [
+    PublicKey::from_str("02b55f16363d70ae5034cc39554e8ce151254ab380bed2029cc7344807c22e6c1b").x_only_public_key().0,
+    PublicKey::from_str("038677177e7ce4f8090f07661ac39636e4ea921bf28f7e45ba24dcf6ea56aa5f97").x_only_public_key().0,
+].into_iter().collect::<indexmap::IndexSet<_>>();
 
-let arbitrators = vec![PublicKey::from_str("03017f1ce0d34892be7e930c8eea77f54ce300386dea5e883bf1da60f47d64f547")];
+let arbitrators = [PublicKey::from_str("03017f1ce0d34892be7e930c8eea77f54ce300386dea5e883bf1da60f47d64f547").x_only_public_key().0].into_iter().collect::<indexmap::IndexSet<_>>();
 
 // Internal public key for constructing the multisig
 let internal_pubkey = PublicKey::from_str("03af0c7e8b8cf586f762ce1377a51fc6b7228a9caed4a5dcb43b180acf6824f7c9");
@@ -162,9 +162,8 @@ let multisig = Multisig::new(MultisigData {
     quorum,
     internal_pubkey,
     network,
-});
+}).expect("valid multisig configuration");
 
 // Should prints "bcrt1pu0z0pwk4jn3naucadmr8gz9eh2xd3ts5shkat9vkslkms44hpavsvcdleq"
 println!(multisig.address().to_string());
 ```
-

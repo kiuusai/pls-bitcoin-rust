@@ -8,6 +8,7 @@ repository = "https://github.com/kiuusai/pls-bitcoin-rust"
 
 [dependencies]
 bitcoin = "0.32.102"
+indexmap = "2.14.2"
 
 [dev-dependencies]
 bitcoin = { version = "0.32.102", features = ["encoding", "rand"] }

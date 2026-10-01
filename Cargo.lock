@@ -1048,6 +1048,7 @@ name = "pls-bitcoin-lib"
 version = "0.3.0"
 dependencies = [
  "bitcoin",
+ "indexmap",
  "nigiri-rs",
  "rstest",
  "tokio",
