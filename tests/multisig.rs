@@ -203,6 +203,7 @@ mod multisig_mount_tests {
 }
 
 mod multisig_spending_tests {
+    use core::time;
     use std::collections::{HashMap, HashSet};
     use std::time::Duration;
     use std::{assert_matches, println, vec};
@@ -311,6 +312,8 @@ mod multisig_spending_tests {
                 .wait_for_confirmation(&txid, Duration::MAX)
                 .await
                 .unwrap();
+
+            tokio::time::sleep(time::Duration::from_millis(100)).await;
 
             let outputs = client
                 .get_utxos(&multisig.address().to_string())
