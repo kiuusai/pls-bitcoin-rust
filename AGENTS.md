@@ -29,6 +29,8 @@ This file defines working guidelines for AI coding agents in this repository
 
 ## Editing guidelines
 - Prefer small diffs over broad refactors
+- Prefer define variable type at start instead of on method execuction in cases it's required static typing
+- Use shortest path for variable definitions every time it's possible
 - Match existing coding patterns before introducing new abstractions
 - Add brief comments only for non obviously logic
 - Update docs when behavior, flows, or developer commands change
