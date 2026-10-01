@@ -39,6 +39,7 @@ This file defines working guidelines for AI coding agents in this repository
 - Tests cannot bypass current code logic flow unless explicitly required
 - If specific test doesn't exists, create one that satisfies the functionality necessity
 - Avoid adding environment variables. If needed, put a coherent default value on this
+- Use rstest to create test cases and resources if needed
 
 Suggested commands (run from repository root):
 ```bash
