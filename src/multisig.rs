@@ -95,6 +95,8 @@ pub enum MultisigError {
     QuorumZero,
     /// A public key is configured as both a part and an arbitrator.
     ArbitratorIsPart(XOnlyPublicKey),
+    /// Quorum is greater than arbitrators length.
+    QuorumGreaterThanArbitratorsLength,
 }
 
 impl fmt::Display for MultisigError {
@@ -103,6 +105,12 @@ impl fmt::Display for MultisigError {
             Self::QuorumZero => write!(f, "arbitrator quorum must be greater than zero"),
             Self::ArbitratorIsPart(key) => {
                 write!(f, "arbitrator key is also configured as a part: {key}")
+            }
+            Self::QuorumGreaterThanArbitratorsLength => {
+                write!(
+                    f,
+                    "arbitrator quorum must be equal or greater than arbitrators length"
+                )
             }
         }
     }
@@ -168,6 +176,10 @@ impl Multisig {
     pub fn new(data: MultisigData) -> Result<Multisig, MultisigError> {
         if data.quorum == 0 {
             return Err(MultisigError::QuorumZero);
+        }
+
+        if data.quorum > data.arbitrators.len() {
+            return Err(MultisigError::QuorumGreaterThanArbitratorsLength);
         }
 
         for arbitrator in &data.arbitrators {

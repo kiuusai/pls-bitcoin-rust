@@ -1,10 +1,22 @@
 mod multisig_errors_handling {
     use bitcoin::secp256k1::rand::thread_rng;
-    use bitcoin::secp256k1::{PublicKey, XOnlyPublicKey, Secp256k1, SecretKey};
+    use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey, XOnlyPublicKey};
     use bitcoin::{Network, ScriptBuf};
     use indexmap::IndexSet;
     use pls_bitcoin_lib::{Multisig, MultisigData, MultisigError, SpendingData, SpendingError};
-    use rstest::{fixture, rstest};
+    use rstest::rstest;
+
+    struct MultisigConfig {
+        quorum: usize,
+        share_part_and_arbitrator: bool,
+        shared_key: Option<XOnlyPublicKey>,
+        expected_error: MultisigErrorKind,
+    }
+
+    enum MultisigErrorKind {
+        MultisigError(MultisigError),
+        SpendingError(SpendingError),
+    }
 
     fn key() -> PublicKey {
         let secp = Secp256k1::new();
@@ -16,64 +28,79 @@ mod multisig_errors_handling {
         key().x_only_public_key().0
     }
 
-    #[fixture]
-    fn multisig_data() -> MultisigData {
-        MultisigData {
-            parts: IndexSet::from([x_only_key()]),
-            arbitrators: IndexSet::from([x_only_key()]),
-            quorum: 1,
-            internal_pubkey: key(),
-            network: Network::Regtest,
+    impl MultisigConfig {
+        fn into_data(&self) -> MultisigData {
+            let part = if self.share_part_and_arbitrator {
+                self.shared_key
+                    .expect("overlap case provides its shared key")
+            } else {
+                x_only_key()
+            };
+            let arbitrator = if self.share_part_and_arbitrator {
+                part
+            } else {
+                x_only_key()
+            };
+
+            MultisigData {
+                parts: IndexSet::from([part]),
+                arbitrators: IndexSet::from([arbitrator]),
+                quorum: self.quorum,
+                internal_pubkey: key(),
+                network: Network::Regtest,
+            }
         }
     }
 
-    #[fixture]
-    fn multisig_data_with_zero_quorum() -> MultisigData {
-        let mut data = multisig_data();
-        data.quorum = 0;
-        data
-    }
-
-    #[fixture]
-    fn multisig_data_with_arbitrator_also_in_parts() -> MultisigData {
-        let part = x_only_key();
-        MultisigData {
-            parts: IndexSet::from([part]),
-            arbitrators: IndexSet::from([part]),
+    fn arbitrator_is_part_config() -> MultisigConfig {
+        let shared_key = x_only_key();
+        MultisigConfig {
             quorum: 1,
-            internal_pubkey: key(),
-            network: Network::Regtest,
+            share_part_and_arbitrator: true,
+            shared_key: Some(shared_key),
+            expected_error: MultisigErrorKind::MultisigError(MultisigError::ArbitratorIsPart(
+                shared_key,
+            )),
         }
     }
 
     #[rstest]
-    fn rejects_zero_quorum(multisig_data_with_zero_quorum: MultisigData) {
-        assert!(matches!(
-            Multisig::new(multisig_data_with_zero_quorum),
-            Err(MultisigError::QuorumZero)
-        ));
-    }
+    #[case::zero_quorum(MultisigConfig {
+        quorum: 0,
+        share_part_and_arbitrator: false,
+        shared_key: None,
+        expected_error: MultisigErrorKind::MultisigError(MultisigError::QuorumZero),
+    })]
+    #[case::quorum_exceeds_arbitrators(MultisigConfig {
+        quorum: 2,
+        share_part_and_arbitrator: false,
+        shared_key: None,
+        expected_error: MultisigErrorKind::MultisigError(MultisigError::QuorumGreaterThanArbitratorsLength),
+    })]
+    #[case::arbitrator_is_part(arbitrator_is_part_config())]
+    #[case::spending_script_not_in_tree(MultisigConfig {
+        quorum: 1,
+        share_part_and_arbitrator: false,
+        shared_key: None,
+        expected_error: MultisigErrorKind::SpendingError(SpendingError::ScriptNotFound),
+    })]
+    fn rejects_with_given_errors(#[case] config: MultisigConfig) {
+        let data = config.into_data();
 
-    #[rstest]
-    fn rejects_arbitrator_xonly_key_that_is_also_a_part(
-        multisig_data_with_arbitrator_also_in_parts: MultisigData,
-    ) {
-        assert!(matches!(
-            Multisig::new(multisig_data_with_arbitrator_also_in_parts),
-            Err(MultisigError::ArbitratorIsPart(_))
-        ));
-    }
-
-    #[rstest]
-    fn returns_error_when_spending_script_is_not_in_taproot_tree(multisig_data: MultisigData) {
-        let multisig = Multisig::new(multisig_data).unwrap();
-        let result = multisig.start_tx_spending(SpendingData {
-            redeem_script: ScriptBuf::new(),
-            utxos: vec![],
-            outs: vec![],
-            lock_time: None,
-        });
-
-        assert_eq!(result, Err(SpendingError::ScriptNotFound));
+        match config.expected_error {
+            MultisigErrorKind::MultisigError(err) => {
+                assert_eq!(Multisig::new(data).expect_err("Expected error"), err);
+            }
+            MultisigErrorKind::SpendingError(err) => {
+                let multisig = Multisig::new(data).unwrap();
+                let result = multisig.start_tx_spending(SpendingData {
+                    redeem_script: ScriptBuf::new(),
+                    utxos: vec![],
+                    outs: vec![],
+                    lock_time: None,
+                });
+                assert_eq!(result, Err(err));
+            }
+        }
     }
 }
