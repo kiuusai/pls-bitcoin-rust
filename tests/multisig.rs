@@ -222,6 +222,7 @@ mod multisig_spending_tests {
         Address, Amount, Network, OutPoint, PrivateKey, TapLeafHash, TapSighashType, TxOut, Txid,
         Witness,
     };
+    use nigiri_rs::fixtures::Fixture;
     use nigiri_rs::{Bitcoin, BitcoinUtxo, NigiriClient, NigiriError};
     use rstest::rstest;
 
@@ -230,14 +231,16 @@ mod multisig_spending_tests {
     #[case(5, 2, 2)]
     #[case(2, 3, 2)]
     #[case(2, 3, 1)]
-    #[nigiri_rs::test]
+    #[tokio::test]
     async fn it_spends_multisig_values(
-        #[ignore] client: NigiriClient<Bitcoin>,
         #[case] parts_count: usize,
         #[case] arbitrators_count: usize,
         #[case] quorum: usize,
         #[values(0, 1, 5)] blocks_to_lock: usize,
     ) {
+        let fixture = Fixture::<Bitcoin>::start().await.unwrap();
+        let client: NigiriClient<Bitcoin> = fixture.client().clone();
+
         let secp = Secp256k1::new();
         let rng = &mut thread_rng();
 
@@ -525,6 +528,7 @@ mod multisig_spending_tests {
             );
         }
 
+        fixture.shutdown().await.unwrap();
         println!("test finished");
     }
 }
